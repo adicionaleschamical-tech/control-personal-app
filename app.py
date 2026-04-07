@@ -4,10 +4,9 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime
 
-# --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Control de Servicios - Regional", layout="centered")
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="Control de Servicios - Regional", layout="wide")
 
-# Función de conexión
 def conectar_gsheet():
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -19,96 +18,101 @@ def conectar_gsheet():
         st.error(f"Error de conexión: {e}")
         return None
 
-# --- MANEJO DE SESIÓN ---
+# --- SESIÓN ---
 if 'logueado' not in st.session_state:
     st.session_state.logueado = False
     st.session_state.user_data = {}
+if 'lista_temporal' not in st.session_state:
+    st.session_state.lista_temporal = []
 
-# --- FORMULARIO DE LOGIN ---
-def login_screen():
+# --- LOGIN ---
+if not st.session_state.logueado:
     st.title("🔐 Acceso al Sistema")
     with st.form("login"):
-        user_input = st.text_input("Usuario (DNI)")
-        pass_input = st.text_input("Clave", type="password")
-        submit = st.form_submit_button("Entrar")
-        
-        if submit:
+        u = st.text_input("Usuario (DNI)")
+        p = st.text_input("Clave", type="password")
+        if st.form_submit_button("Entrar"):
             sheet = conectar_gsheet()
             if sheet:
-                # Leer pestaña Usuarios
                 df_users = pd.DataFrame(sheet.worksheet("Usuarios").get_all_records())
-                
-                # Ajustamos la búsqueda a tus nombres: 'Usuario' y 'Clave'
-                match = df_users[(df_users['Usuario'].astype(str) == user_input) & 
-                                 (df_users['Clave'].astype(str) == pass_input)]
-                
+                match = df_users[(df_users['Usuario'].astype(str) == u) & (df_users['Clave'].astype(str) == p)]
                 if not match.empty:
                     st.session_state.logueado = True
                     st.session_state.user_data = match.iloc[0].to_dict()
                     st.rerun()
                 else:
-                    st.error("Usuario o Clave incorrectos")
-
-# --- APP PRINCIPAL ---
-if not st.session_state.logueado:
-    login_screen()
+                    st.error("Credenciales incorrectas")
 else:
+    # --- APP PRINCIPAL ---
     user = st.session_state.user_data
-    st.sidebar.success(f"Sesión: {user['Usuario']}")
-    st.sidebar.info(f"Dependencia: {user['Dependencia']}")
+    st.sidebar.success(f"Usuario: {user['Usuario']}")
     if st.sidebar.button("Cerrar Sesión"):
         st.session_state.logueado = False
+        st.session_state.lista_temporal = []
         st.rerun()
 
-    st.title("📝 Registro de Servicios")
+    st.title("📝 Carga Masiva de Servicios")
     
     sheet = conectar_gsheet()
     if sheet:
-        # 1. Cargar Nómina (con tilde como me pasaste)
+        # Cargar datos base
         df_nomina = pd.DataFrame(sheet.worksheet("Nómina").get_all_records())
-        
-        # Filtro por Dependencia (Admin ve todo, Usuario solo lo suyo)
+        df_reg = pd.DataFrame(sheet.worksheet("Registros").get_all_records())
+
+        # Filtro de dependencia
         if user['Rol'] == "Administrador":
-            todas_deps = ["Todas"] + list(df_nomina['DEPENDENCIA'].unique())
-            dep_seleccionada = st.selectbox("Filtrar Dependencia", todas_deps)
-            if dep_seleccionada != "Todas":
-                df_nomina = df_nomina[df_nomina['DEPENDENCIA'] == dep_seleccionada]
+            dep_sel = st.selectbox("Dependencia", ["Todas"] + list(df_nomina['DEPENDENCIA'].unique()))
+            df_filtro = df_nomina if dep_sel == "Todas" else df_nomina[df_nomina['DEPENDENCIA'] == dep_sel]
         else:
-            df_nomina = df_nomina[df_nomina['DEPENDENCIA'] == user['Dependencia']]
+            df_filtro = df_nomina[df_nomina['DEPENDENCIA'] == user['Dependencia']]
 
-        # 2. Formulario de Carga
-        if not df_nomina.empty:
-            with st.form("registro_servicio"):
-                fecha_sel = st.date_input("Fecha del Servicio", datetime.now())
-                agente_sel = st.selectbox("Seleccionar Personal", df_nomina['APELLIDO Y NOMBRES'].tolist())
-                observaciones = st.text_area("OBSERVACIONES")
-                
-                # Extraer datos del agente seleccionado
-                datos_agente = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente_sel].iloc[0]
-                dni_agente = datos_agente['DNI']
-                dep_agente = datos_agente['DEPENDENCIA']
-                
-                # --- DOBLE VALIDACIÓN EN 'REGISTROS' ---
-                df_registros = pd.DataFrame(sheet.worksheet("Registros").get_all_records())
-                # Buscamos si ya existe ese DNI en Registros
-                ya_existe = not df_registros[df_registros['DNI'].astype(str) == str(dni_agente)].empty
-                
-                autorizacion = True
-                if ya_existe:
-                    servicios_viejos = df_registros[df_registros['DNI'].astype(str) == str(dni_agente)]
-                    fechas = ", ".join(servicios_viejos['FECHA'].astype(str).tolist())
-                    st.warning(f"⚠️ {agente_sel} ya tiene servicios registrados el: {fechas}")
-                    autorizacion = st.checkbox("Confirmar Doble Servicio (Doble Validación)")
+        # --- SECCIÓN 1: AGREGAR A LA LISTA ---
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            st.subheader("Añadir Efectivo")
+            fecha = st.date_input("Fecha", datetime.now())
+            agente = st.selectbox("Efectivo", df_filtro['APELLIDO Y NOMBRES'].tolist())
+            obs = st.text_input("Observaciones")
+            
+            # Validación en tiempo real
+            dni_agente = df_filtro[df_filtro['APELLIDO Y NOMBRES'] == agente]['DNI'].values[0]
+            ya_registrado = df_reg[df_reg['DNI'].astype(str) == str(dni_agente)]
+            
+            if not ya_registrado.empty:
+                fechas_previas = ", ".join(ya_registrado['FECHA'].astype(str).tolist())
+                st.warning(f"⚠️ {agente} ya tiene servicios el: {fechas_previas}")
+            
+            if st.button("➕ Agregar a la lista"):
+                datos_agente = df_filtro[df_filtro['APELLIDO Y NOMBRES'] == agente].iloc[0]
+                nuevo_item = {
+                    "FECHA": str(fecha),
+                    "APELLIDO Y NOMBRES": agente,
+                    "DNI": str(dni_agente),
+                    "DEPENDENCIA": datos_agente['DEPENDENCIA'],
+                    "OBSERVACIONES": obs
+                }
+                st.session_state.lista_temporal.append(nuevo_item)
+                st.rerun()
 
-                btn_registrar = st.form_submit_button("Registrar en Sheet")
-
-                if btn_registrar:
-                    if ya_existe and not autorizacion:
-                        st.error("Debe marcar la casilla de confirmación para duplicar el servicio.")
-                    else:
-                        # Respetamos el orden de tus columnas: FECHA, APELLIDO Y NOMBRES, DNI, DEPENDENCIA, OBSERVACIONES
-                        nueva_fila = [str(fecha_sel), agente_sel, str(dni_agente), dep_agente, observaciones]
-                        sheet.worksheet("Registros").append_row(nueva_fila)
-                        st.success(f"✅ Servicio de {agente_sel} registrado con éxito.")
-        else:
-            st.warning("No hay personal cargado para esta dependencia.")
+        # --- SECCIÓN 2: VISTA PREVIA Y CONFIRMACIÓN ---
+        with col2:
+            st.subheader("Lista para enviar")
+            if st.session_state.lista_temporal:
+                df_temp = pd.DataFrame(st.session_state.lista_temporal)
+                st.table(df_temp[['APELLIDO Y NOMBRES', 'DNI']])
+                
+                if st.button("🗑️ Limpiar Lista"):
+                    st.session_state.lista_temporal = []
+                    st.rerun()
+                
+                if st.button("🚀 CONFIRMAR Y REGISTRAR TODO"):
+                    with st.spinner("Registrando..."):
+                        pestaña_reg = sheet.worksheet("Registros")
+                        for item in st.session_state.lista_temporal:
+                            pestaña_reg.append_row(list(item.values()))
+                        
+                        st.success(f"Se registraron {len(st.session_state.lista_temporal)} servicios.")
+                        st.session_state.lista_temporal = [] # Limpiar tras éxito
+            else:
+                st.info("La lista está vacía. Agrega efectivos a la izquierda.")
