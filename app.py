@@ -102,11 +102,12 @@ if not st.session_state.logueado:
                         st.session_state.logueado = True
                         st.rerun()
                     else:
-                        st.error("Credenciales incorrectas. Verifique e intente nuevamente.")
+                        st.error("Credenciales incorrectas.")
 else:
     # --- INTERFAZ DE ADMINISTRADOR ---
     with st.sidebar:
-        st.image("https://cdn-icons-png.flaticon.com/512/1022/1022334.png", width=80)
+        # ÍCONO CORREGIDO: Escudo de seguridad (Policía/Guardia)
+        st.image("https://cdn-icons-png.flaticon.com/512/2092/2092663.png", width=80)
         st.title("Gestión UR-V")
         st.write("---")
         st.success(f"Sesión Activa")
@@ -118,7 +119,6 @@ else:
     
     sheet = conectar_gsheet()
     if sheet:
-        # Carga silenciosa de datos
         with st.spinner("Sincronizando con la nube..."):
             df_nomina = pd.DataFrame(sheet.worksheet("Nómina").get_all_records())
             df_nomina.columns = [c.strip() for c in df_nomina.columns]
@@ -129,9 +129,9 @@ else:
 
         # Dashboard de métricas
         m1, m2, m3 = st.columns(3)
-        m1.metric("📦 En espera de envío", len(st.session_state.lista_temporal))
-        m2.metric("👥 Personal en Nómina", len(df_nomina))
-        m3.metric("📅 Fecha Hoy", datetime.now().strftime("%d/%m/%Y"))
+        m1.metric("📦 En lista de espera", len(st.session_state.lista_temporal))
+        m2.metric("👥 Nómina Regional", len(df_nomina))
+        m3.metric("📅 Fecha Actual", datetime.now().strftime("%d/%m/%Y"))
 
         st.write("---")
 
@@ -141,27 +141,26 @@ else:
         with col_carga:
             st.subheader("📝 Nuevo Registro")
             
-            # Selector de Fecha (Calendario con formato DD/MM/AAAA al guardar)
+            # Fecha (Formato DD/MM/AAAA)
             fecha_raw = st.date_input("Fecha del Servicio", datetime.now())
             fecha_formato = fecha_raw.strftime("%d/%m/%Y")
             
-            # Buscador de Personal
             lista_personal = sorted(df_nomina['APELLIDO Y NOMBRES'].tolist())
-            agente = st.selectbox("Buscar Efectivo (Escriba el apellido)", ["--- Seleccione un agente ---"] + lista_personal)
+            agente = st.selectbox("Buscar Efectivo", ["--- Seleccione un agente ---"] + lista_personal)
             
-            obs_text = st.text_input("Observaciones / Detalles del Servicio")
+            obs_text = st.text_input("Observaciones / Detalles")
 
             if agente != "--- Seleccione un agente ---":
                 datos_ag = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente].iloc[0]
                 dni_ag = str(datos_ag['DNI'])
                 dep_ag = datos_ag['DEPENDENCIA']
                 
-                # VALIDACIÓN DE DUPLICADOS (Búsqueda en historial por DNI)
+                # VALIDACIÓN DE DUPLICADOS
                 if 'DNI' in df_reg.columns:
                     previos = df_reg[df_reg['DNI'].astype(str) == dni_ag]
                     if not previos.empty:
-                        st.warning(f"⚠️ **REGISTRO EXISTENTE:** {agente} ya figura en el historial.")
-                        with st.expander("Ver detalle de fechas anteriores"):
+                        st.warning(f"⚠️ **REGISTRO PREVIO:** {agente} ya figura en el historial.")
+                        with st.expander("Ver historial de fechas"):
                             st.dataframe(previos[['FECHA', 'DEPENDENCIA', 'OBSERVACIONES']], hide_index=True)
 
                 if st.button("➕ AÑADIR A LA LISTA"):
@@ -188,18 +187,17 @@ else:
                 btn_env, btn_bor = st.columns(2)
                 with btn_env:
                     if st.button("🚀 CONFIRMAR Y GUARDAR TODO", type="primary"):
-                        with st.spinner("Impactando datos en el Sheet..."):
+                        with st.spinner("Enviando datos..."):
                             ws_reg = sheet.worksheet("Registros")
                             for item in st.session_state.lista_temporal:
                                 ws_reg.append_row(list(item.values()))
                             
                             st.balloons()
-                            st.success(f"Éxito: {len(st.session_state.lista_temporal)} servicios registrados.")
+                            st.success(f"¡{len(st.session_state.lista_temporal)} registros guardados!")
                             st.session_state.lista_temporal = []
-                            # st.rerun() omitido para permitir lectura del mensaje de éxito
                 with btn_bor:
                     if st.button("🗑️ VACIAR LISTA"):
                         st.session_state.lista_temporal = []
                         st.rerun()
             else:
-                st.info("No hay registros pendientes en la lista de carga.")
+                st.info("No hay registros pendientes de envío.")
