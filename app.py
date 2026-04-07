@@ -3,8 +3,9 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime
+import time
 
-# --- CONFIGURACIÓN DE PÁGINA (ESTILO PROFESIONAL) ---
+# --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
     page_title="Sistema Regional de Servicios",
     page_icon="👮‍♂️",
@@ -12,58 +13,25 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- ESTILO VISUAL PERSONALIZADO (CSS) ---
+# --- ESTILO VISUAL (CSS) ---
 st.markdown("""
     <style>
-    /* Fondo y tipografía general */
-    .main {
-        background-color: #f0f2f6;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-    
-    /* Tarjetas de Métricas */
-    div[data-testid="stMetricValue"] {
-        font-size: 32px;
-        color: #003366;
-        font-weight: 700;
-    }
+    .main { background-color: #f0f2f6; }
+    div[data-testid="stMetricValue"] { font-size: 28px; color: #003366; font-weight: 700; }
     div[data-testid="stMetric"] {
         background-color: #ffffff;
-        padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        border: 1px solid #e0e0e0;
-    }
-
-    /* Botones Modernos */
-    .stButton>button {
-        width: 100%;
+        padding: 15px;
         border-radius: 10px;
-        height: 3.5em;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
-    
-    /* Botón Primario (Guardar) */
-    div.stButton > button:first-child[kind="primary"] {
-        background-color: #003366;
-        border: none;
-    }
-
-    /* Contenedores de entrada */
-    .stSelectbox, .stDateInput, .stTextInput {
-        margin-bottom: 15px;
-    }
-    
-    /* Títulos */
-    h1, h2, h3 {
-        color: #002244;
-        font-weight: 800 !important;
-    }
+    .stButton>button { border-radius: 8px; height: 3em; font-weight: bold; }
+    div.stButton > button:first-child[kind="primary"] { background-color: #003366; color: white; }
     </style>
     """, unsafe_allow_html=True)
 
+# --- FUNCIONES CON CACHÉ PARA EVITAR ERROR 429 ---
+
+@st.cache_resource(ttl=600)
 def conectar_gsheet():
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -72,132 +40,134 @@ def conectar_gsheet():
         client = gspread.authorize(creds)
         return client.open_by_key(st.secrets["general"]["spreadsheet_id"])
     except Exception as e:
-        st.error(f"Error de conexión con Google Sheets: {e}")
         return None
 
-# --- MANEJO DE ESTADO DE SESIÓN ---
+@st.cache_data(ttl=60) # Actualiza los datos automáticamente cada 1 minuto
+def obtener_datos_tabla(nombre_pestaña):
+    sheet = conectar_gsheet()
+    if sheet:
+        try:
+            ws = sheet.worksheet(nombre_pestaña)
+            data = ws.get_all_values()
+            if len(data) > 0:
+                df = pd.DataFrame(data[1:], columns=data[0])
+                df.columns = [c.strip() for c in df.columns]
+                return df
+            return pd.DataFrame()
+        except:
+            return pd.DataFrame()
+    return None
+
+# --- MANEJO DE SESIÓN ---
 if 'lista_temporal' not in st.session_state:
     st.session_state.lista_temporal = []
 if 'logueado' not in st.session_state:
     st.session_state.logueado = False
 
-# --- PANTALLA DE ACCESO (LOGIN) ---
+# --- PANTALLA DE LOGIN ---
 if not st.session_state.logueado:
-    _, col_center, _ = st.columns([1, 1.2, 1])
-    with col_center:
-        st.write("")
-        st.write("")
-        st.title("🔐 Acceso Restringido")
-        st.info("Ingrese sus credenciales para gestionar los servicios regionales.")
+    _, col_login, _ = st.columns([1, 1.2, 1])
+    with col_login:
+        st.title("🔐 Acceso")
         with st.form("login_form"):
             u = st.text_input("Usuario (DNI)")
             p = st.text_input("Contraseña", type="password")
-            if st.form_submit_button("INGRESAR AL SISTEMA"):
+            if st.form_submit_button("INGRESAR"):
+                # Para el login no usamos caché para asegurar que sea en tiempo real
                 sheet = conectar_gsheet()
                 if sheet:
-                    df_users = pd.DataFrame(sheet.worksheet("Usuarios").get_all_records())
-                    df_users.columns = [c.strip() for c in df_users.columns]
+                    ws_user = sheet.worksheet("Usuarios")
+                    df_users = pd.DataFrame(ws_user.get_all_records())
                     match = df_users[(df_users['Usuario'].astype(str) == u) & (df_users['Clave'].astype(str) == p)]
                     if not match.empty:
                         st.session_state.logueado = True
                         st.rerun()
                     else:
-                        st.error("Credenciales incorrectas.")
+                        st.error("Datos incorrectos")
 else:
-    # --- INTERFAZ DE ADMINISTRADOR ---
+    # --- INTERFAZ PRINCIPAL ---
     with st.sidebar:
-        # ÍCONO CORREGIDO: Escudo de seguridad (Policía/Guardia)
         st.image("https://cdn-icons-png.flaticon.com/512/2092/2092663.png", width=80)
-        st.title("Gestión UR-V")
-        st.write("---")
-        st.success(f"Sesión Activa")
+        st.title("UR-V Región")
         if st.button("CERRAR SESIÓN"):
-            st.session_state.update({"logueado": False, "lista_temporal": []})
+            st.session_state.logueado = False
+            st.session_state.lista_temporal = []
             st.rerun()
 
-    st.title("👮‍♂️ Carga Central de Servicios Regionales")
+    st.title("👮‍♂️ Carga de Servicios Regionales")
     
-    sheet = conectar_gsheet()
-    if sheet:
-        with st.spinner("Sincronizando con la nube..."):
-            df_nomina = pd.DataFrame(sheet.worksheet("Nómina").get_all_records())
-            df_nomina.columns = [c.strip() for c in df_nomina.columns]
-            
-            data_reg = sheet.worksheet("Registros").get_all_records()
-            df_reg = pd.DataFrame(data_reg) if data_reg else pd.DataFrame(columns=['FECHA', 'APELLIDO Y NOMBRES', 'DNI', 'DEPENDENCIA', 'OBSERVACIONES'])
-            if not df_reg.empty: df_reg.columns = [c.strip() for c in df_reg.columns]
+    # Obtener datos usando la función con caché
+    df_nomina = obtener_datos_tabla("Nómina")
+    df_reg = obtener_datos_tabla("Registros")
 
-        # Dashboard de métricas
+    if df_nomina is not None:
+        # Métricas
         m1, m2, m3 = st.columns(3)
-        m1.metric("📦 En lista de espera", len(st.session_state.lista_temporal))
-        m2.metric("👥 Nómina Regional", len(df_nomina))
-        m3.metric("📅 Fecha Actual", datetime.now().strftime("%d/%m/%Y"))
+        m1.metric("📦 En espera", len(st.session_state.lista_temporal))
+        m2.metric("👥 Nómina", len(df_nomina))
+        m3.metric("📅 Fecha", datetime.now().strftime("%d/%m/%Y"))
 
-        st.write("---")
+        st.divider()
 
-        # Layout Principal
-        col_carga, col_vista = st.columns([1, 1.4], gap="large")
+        col_c, col_v = st.columns([1, 1.4], gap="large")
 
-        with col_carga:
+        with col_c:
             st.subheader("📝 Nuevo Registro")
-            
-            # Fecha (Formato DD/MM/AAAA)
-            fecha_raw = st.date_input("Fecha del Servicio", datetime.now())
-            fecha_formato = fecha_raw.strftime("%d/%m/%Y")
+            fecha_input = st.date_input("Fecha", datetime.now())
+            fecha_str = fecha_input.strftime("%d/%m/%Y")
             
             lista_personal = sorted(df_nomina['APELLIDO Y NOMBRES'].tolist())
-            agente = st.selectbox("Buscar Efectivo", ["--- Seleccione un agente ---"] + lista_personal)
-            
-            obs_text = st.text_input("Observaciones / Detalles")
+            agente = st.selectbox("Efectivo", ["--- Seleccione ---"] + lista_personal)
+            obs = st.text_input("Observaciones")
 
-            if agente != "--- Seleccione un agente ---":
+            if agente != "--- Seleccione ---":
                 datos_ag = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente].iloc[0]
                 dni_ag = str(datos_ag['DNI'])
                 dep_ag = datos_ag['DEPENDENCIA']
                 
-                # VALIDACIÓN DE DUPLICADOS
-                if 'DNI' in df_reg.columns:
+                # Validación de duplicados
+                if not df_reg.empty and 'DNI' in df_reg.columns:
                     previos = df_reg[df_reg['DNI'].astype(str) == dni_ag]
                     if not previos.empty:
-                        st.warning(f"⚠️ **REGISTRO PREVIO:** {agente} ya figura en el historial.")
-                        with st.expander("Ver historial de fechas"):
+                        st.warning(f"⚠️ {agente} ya tiene registros previos.")
+                        with st.expander("Ver historial"):
                             st.dataframe(previos[['FECHA', 'DEPENDENCIA', 'OBSERVACIONES']], hide_index=True)
 
                 if st.button("➕ AÑADIR A LA LISTA"):
                     st.session_state.lista_temporal.append({
-                        "FECHA": fecha_formato,
+                        "FECHA": fecha_str,
                         "APELLIDO Y NOMBRES": agente,
                         "DNI": dni_ag,
                         "DEPENDENCIA": dep_ag,
-                        "OBSERVACIONES": obs_text
+                        "OBSERVACIONES": obs
                     })
                     st.rerun()
 
-        with col_vista:
-            st.subheader("📋 Revisión de Carga Actual")
+        with col_v:
+            st.subheader("📋 Revisión")
             if st.session_state.lista_temporal:
-                df_prev = pd.DataFrame(st.session_state.lista_temporal)
-                st.dataframe(
-                    df_prev[['FECHA', 'APELLIDO Y NOMBRES', 'DEPENDENCIA', 'OBSERVACIONES']], 
-                    use_container_width=True, 
-                    hide_index=True
-                )
+                df_temp = pd.DataFrame(st.session_state.lista_temporal)
+                st.dataframe(df_temp[['FECHA', 'APELLIDO Y NOMBRES', 'DEPENDENCIA', 'OBSERVACIONES']], 
+                             use_container_width=True, hide_index=True)
                 
-                st.write("")
-                btn_env, btn_bor = st.columns(2)
-                with btn_env:
-                    if st.button("🚀 CONFIRMAR Y GUARDAR TODO", type="primary"):
-                        with st.spinner("Enviando datos..."):
+                c_env, c_vac = st.columns(2)
+                with c_env:
+                    if st.button("🚀 GUARDAR TODO", type="primary"):
+                        sheet = conectar_gsheet()
+                        if sheet:
                             ws_reg = sheet.worksheet("Registros")
                             for item in st.session_state.lista_temporal:
                                 ws_reg.append_row(list(item.values()))
-                            
                             st.balloons()
-                            st.success(f"¡{len(st.session_state.lista_temporal)} registros guardados!")
+                            st.success("Guardado con éxito")
                             st.session_state.lista_temporal = []
-                with btn_bor:
-                    if st.button("🗑️ VACIAR LISTA"):
+                            # Limpiamos caché para que el historial se actualice
+                            st.cache_data.clear()
+                            time.sleep(1)
+                            st.rerun()
+                with c_vac:
+                    if st.button("🗑️ VACIAR"):
                         st.session_state.lista_temporal = []
                         st.rerun()
             else:
-                st.info("No hay registros pendientes de envío.")
+                st.info("Lista vacía")
