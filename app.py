@@ -19,19 +19,30 @@ st.set_page_config(
 ENV = os.getenv("STREAMLIT_ENV", "production")
 DEBUG = ENV == "development"
 
-# --- SKIN: DARK TACTICAL MODE (CSS MEJORADO) ---
+# --- SKIN: DARK TACTICAL MODE (CSS MEJORADO CON TEXTOS LEGIBLES) ---
 st.markdown("""
     <style>
     /* Fondo General Oscuro */
     .stApp {
-        background-color: #0e1117;
-        color: #e0e0e0;
+        background-color: #0a0c10;
+        color: #ffffff;
+    }
+    
+    /* Texto general más claro y legible */
+    body, p, div, span, label, .stMarkdown {
+        color: #e6edf3 !important;
+    }
+    
+    /* Headers más brillantes */
+    h1, h2, h3, h4, h5, h6 {
+        color: #ffffff !important;
+        font-weight: 600 !important;
     }
     
     /* Tarjetas de Métricas */
     div[data-testid="stMetric"] {
-        background-color: #1c212d;
-        border: 1px solid #30363d;
+        background-color: #1a1f2e;
+        border: 1px solid #2d3348;
         border-radius: 12px;
         padding: 20px;
         transition: all 0.3s ease;
@@ -39,87 +50,159 @@ st.markdown("""
     div[data-testid="stMetric"]:hover {
         border-color: #58a6ff;
         transform: translateY(-2px);
+        background-color: #1f2537;
     }
     div[data-testid="stMetricValue"] {
         color: #58a6ff !important;
         font-family: 'Courier New', Courier, monospace;
         font-size: 2rem !important;
+        font-weight: bold !important;
     }
     div[data-testid="stMetricLabel"] {
-        color: #8b949e !important;
+        color: #c9d1d9 !important;
+        font-weight: 500 !important;
     }
 
     /* Botones Tácticos */
     .stButton>button {
-        border-radius: 5px;
+        border-radius: 6px;
         font-weight: bold;
         text-transform: uppercase;
-        border: 1px solid #30363d;
+        border: 1px solid #2d3348;
         transition: all 0.3s ease;
         width: 100%;
+        color: #ffffff !important;
+        background-color: #21262d;
     }
     .stButton>button:hover {
         transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(88, 166, 255, 0.2);
+        box-shadow: 0 4px 12px rgba(88, 166, 255, 0.3);
+        border-color: #58a6ff;
+        color: #ffffff !important;
     }
     
     /* Botón Guardar (Azul Brillante) */
     div.stButton > button:first-child[kind="primary"] {
         background-color: #1f6feb;
-        color: white;
+        color: white !important;
         border: none;
     }
     div.stButton > button:first-child[kind="primary"]:hover {
         background-color: #388bfd;
+        color: white !important;
     }
     
     /* Botón Peligro */
     div.stButton > button:first-child[kind="secondary"] {
         background-color: #da3633;
-        color: white;
+        color: white !important;
     }
     div.stButton > button:first-child[kind="secondary"]:hover {
         background-color: #f85149;
+        color: white !important;
     }
     
-    /* Tablas estilo Dark */
+    /* Tablas estilo Dark - Texto legible */
     .stDataFrame {
-        border: 1px solid #30363d;
+        border: 1px solid #2d3348;
         border-radius: 10px;
+        background-color: #161b22;
     }
     .dataframe {
         font-size: 14px;
+        color: #e6edf3 !important;
+    }
+    .dataframe th {
+        background-color: #1a1f2e !important;
+        color: #58a6ff !important;
+        font-weight: bold !important;
+        padding: 10px !important;
+    }
+    .dataframe td {
+        color: #e6edf3 !important;
+        padding: 8px !important;
+        border-bottom-color: #2d3348 !important;
+    }
+    .dataframe tr:hover td {
+        background-color: #1f2537 !important;
     }
 
-    /* Sidebar Oscura */
+    /* Sidebar Oscura con texto legible */
     section[data-testid="stSidebar"] {
-        background-color: #161b22;
-        border-right: 1px solid #30363d;
+        background-color: #0d1117;
+        border-right: 1px solid #2d3348;
+    }
+    section[data-testid="stSidebar"] * {
+        color: #e6edf3 !important;
+    }
+    section[data-testid="stSidebar"] .stMarkdown {
+        color: #e6edf3 !important;
     }
 
     /* Input Fields */
     input, select, textarea {
         background-color: #0d1117 !important;
-        color: white !important;
-        border: 1px solid #30363d !important;
+        color: #e6edf3 !important;
+        border: 1px solid #2d3348 !important;
         border-radius: 6px !important;
     }
     input:focus, select:focus, textarea:focus {
         border-color: #58a6ff !important;
         box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2) !important;
+        color: #ffffff !important;
+    }
+    input::placeholder, textarea::placeholder {
+        color: #8b949e !important;
+    }
+    
+    /* Labels de formularios */
+    .stTextInput label, .stSelectbox label, .stDateInput label, .stTextArea label {
+        color: #c9d1d9 !important;
+        font-weight: 500 !important;
     }
 
     /* Expanders */
     .streamlit-expanderHeader {
-        background-color: #1c212d;
+        background-color: #1a1f2e;
         border-radius: 6px;
-        color: #58a6ff;
+        color: #58a6ff !important;
+        font-weight: 500 !important;
+    }
+    .streamlit-expanderHeader:hover {
+        background-color: #1f2537;
+    }
+    .streamlit-expanderContent {
+        background-color: #0d1117;
+        color: #e6edf3 !important;
     }
     
     /* Alertas personalizadas */
     .stAlert {
         border-radius: 6px;
         border-left: 4px solid;
+        background-color: #1a1f2e !important;
+        color: #e6edf3 !important;
+    }
+    .stAlert [data-testid="stMarkdown"] {
+        color: #e6edf3 !important;
+    }
+    
+    /* Mensajes de éxito/error/warning */
+    .stSuccess {
+        background-color: #1a3a2a !important;
+        color: #7ee787 !important;
+    }
+    .stError {
+        background-color: #3a1a1a !important;
+        color: #ff7b72 !important;
+    }
+    .stWarning {
+        background-color: #3a2a1a !important;
+        color: #ffd966 !important;
+    }
+    .stInfo {
+        background-color: #1a2a3a !important;
+        color: #79c0ff !important;
     }
     
     /* Tabs */
@@ -127,16 +210,56 @@ st.markdown("""
         gap: 8px;
     }
     .stTabs [data-baseweb="tab"] {
-        background-color: #1c212d;
+        background-color: #1a1f2e;
         border-radius: 6px;
         padding: 8px 16px;
+        color: #c9d1d9 !important;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #1f6feb !important;
+        color: #ffffff !important;
+    }
+    
+    /* Captions y textos pequeños */
+    .stCaption, caption {
+        color: #8b949e !important;
+    }
+    
+    /* Código */
+    code {
+        color: #ff7b72 !important;
+        background-color: #1a1f2e !important;
+        padding: 2px 4px;
+        border-radius: 4px;
+    }
+    
+    /* Desplegables (selectbox options) */
+    .stSelectbox div[data-baseweb="select"] div {
+        background-color: #0d1117 !important;
+        color: #e6edf3 !important;
+    }
+    
+    /* Checkbox */
+    .stCheckbox label {
+        color: #e6edf3 !important;
+    }
+    
+    /* Spinner/Progress */
+    .stSpinner > div {
+        color: #58a6ff !important;
+    }
+    
+    /* Download button */
+    .stDownloadButton button {
+        background-color: #21262d;
+        color: #ffffff !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
 # --- FUNCIONES DE UTILIDAD ---
 def notificar(mensaje, tipo="info"):
-    """Sistema de notificaciones no bloqueantes"""
+    """Sistema de notificaciones no bloqueantes con colores legibles"""
     if tipo == "success":
         st.toast(f"✅ {mensaje}", icon="🎉")
     elif tipo == "error":
@@ -171,9 +294,9 @@ def log_accion(usuario, accion, detalles):
                         str(detalles)
                     ])
                 except:
-                    pass  # No crítico si falla el log
+                    pass
     except:
-        pass  # No crítico si falla el log
+        pass
 
 # --- FUNCIONES CON CACHÉ (EVITAR ERROR 429) ---
 @st.cache_resource(ttl=600)
@@ -225,7 +348,6 @@ def cargar_registros_recientes():
     df = obtener_datos_tabla("Registros")
     if not df.empty and 'FECHA' in df.columns:
         try:
-            # Convertir fechas y filtrar últimos 90 días
             df['FECHA_DT'] = pd.to_datetime(df['FECHA'], format='%d/%m/%Y', errors='coerce')
             fecha_limite = datetime.now() - pd.Timedelta(days=90)
             df = df[df['FECHA_DT'] >= fecha_limite]
@@ -328,7 +450,7 @@ else:
         
         # Información del sistema
         with st.expander("ℹ️ Información del Sistema"):
-            st.caption(f"Versión: 2.0")
+            st.caption(f"Versión: 2.1")
             st.caption(f"Entorno: {ENV.upper()}")
             st.caption(f"Fecha/Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
