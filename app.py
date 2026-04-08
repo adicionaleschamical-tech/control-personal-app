@@ -18,141 +18,124 @@ st.set_page_config(
 ENV = os.getenv("STREAMLIT_ENV", "production")
 DEBUG = ENV == "development"
 
-# --- SKIN: DARK TACTICAL MODE (COMPLETAMENTE OSCURO) ---
+# --- SKIN: DARK TACTICAL MODE (FORZADO TOTAL) ---
 st.markdown("""
     <style>
-    /* Fondo General Oscuro - Forzar todo */
-    .stApp, .stApp > header, .stApp > footer, .main > div {
+    /* Fondo General */
+    .stApp, .main, .stApp > header, .stApp > footer {
         background-color: #0a0c10 !important;
     }
     
-    /* Forzar fondo de todos los contenedores */
-    div[data-testid="stVerticalBlock"], 
-    div[data-testid="stHorizontalBlock"],
-    div[data-testid="column"],
-    div[data-testid="stForm"],
-    div[class*="css-"] {
-        background-color: transparent !important;
-    }
-    
-    /* Texto general */
-    html, body, [class*="css"] {
+    /* Todos los textos */
+    * {
         color: #ffffff !important;
-    }
-    
-    p, div, span, label, .stMarkdown, .stText {
-        color: #e6edf3 !important;
     }
     
     /* Headers */
     h1, h2, h3, h4, h5, h6 {
         color: #ffffff !important;
-        font-weight: 600 !important;
     }
     
-    /* Tarjetas de Métricas */
+    /* Métricas */
     div[data-testid="stMetric"] {
         background-color: #1a1f2e !important;
-        border: 1px solid #2d3348;
-        border-radius: 12px;
-        padding: 20px;
+        border: 1px solid #2d3348 !important;
     }
     div[data-testid="stMetricValue"] {
         color: #58a6ff !important;
-        font-size: 2rem !important;
-        font-weight: bold !important;
-    }
-    div[data-testid="stMetricLabel"] {
-        color: #c9d1d9 !important;
     }
     
     /* Botones */
     .stButton>button {
-        border-radius: 6px;
-        font-weight: bold;
-        text-transform: uppercase;
-        border: 1px solid #2d3348;
-        color: #ffffff !important;
         background-color: #21262d !important;
+        color: white !important;
+        border: 1px solid #2d3348 !important;
     }
     .stButton>button:hover {
-        border-color: #58a6ff;
         background-color: #2d3348 !important;
     }
     
-    /* Botón Guardar */
-    div.stButton > button:first-child[kind="primary"] {
-        background-color: #1f6feb !important;
-        color: white !important;
+    /* SELECTBOX - Forzar fondo oscuro */
+    div[data-baseweb="select"] {
+        background-color: #0d1117 !important;
     }
-    div.stButton > button:first-child[kind="primary"]:hover {
-        background-color: #388bfd !important;
+    div[data-baseweb="select"] > div {
+        background-color: #0d1117 !important;
+        border: 1px solid #2d3348 !important;
+        color: #ffffff !important;
+    }
+    div[data-baseweb="select"] input {
+        background-color: #0d1117 !important;
+        color: #ffffff !important;
+    }
+    div[data-baseweb="select"] svg {
+        fill: #58a6ff !important;
     }
     
-    /* Tablas */
-    .stDataFrame {
-        border: 1px solid #2d3348;
-        border-radius: 10px;
+    /* Opciones del select desplegable */
+    div[role="listbox"] {
         background-color: #0d1117 !important;
+        border: 1px solid #2d3348 !important;
     }
-    .dataframe {
-        color: #e6edf3 !important;
+    div[role="option"] {
         background-color: #0d1117 !important;
+        color: #ffffff !important;
     }
-    .dataframe th {
+    div[role="option"]:hover {
         background-color: #1a1f2e !important;
-        color: #58a6ff !important;
-        padding: 10px !important;
     }
-    .dataframe td {
-        color: #e6edf3 !important;
+    div[role="option"][aria-selected="true"] {
+        background-color: #1f6feb !important;
+        color: #ffffff !important;
+    }
+    
+    /* Inputs de texto */
+    input {
         background-color: #0d1117 !important;
-        padding: 8px !important;
+        color: #ffffff !important;
+        border: 1px solid #2d3348 !important;
     }
-    .dataframe tr:hover td {
-        background-color: #1a1f2e !important;
+    input:focus {
+        border-color: #58a6ff !important;
+    }
+    input::placeholder {
+        color: #8b949e !important;
+    }
+    
+    /* Date input */
+    div[data-baseweb="calendar"] {
+        background-color: #0d1117 !important;
+    }
+    
+    /* Labels */
+    label {
+        color: #c9d1d9 !important;
     }
     
     /* Sidebar */
     section[data-testid="stSidebar"] {
         background-color: #0d1117 !important;
-        border-right: 1px solid #2d3348;
-    }
-    section[data-testid="stSidebar"] * {
-        color: #e6edf3 !important;
     }
     
-    /* Input Fields */
-    input, select {
+    /* Tablas */
+    .stDataFrame {
         background-color: #0d1117 !important;
-        color: #e6edf3 !important;
-        border: 1px solid #2d3348 !important;
-        border-radius: 6px !important;
     }
-    input:focus, select:focus {
-        border-color: #58a6ff !important;
+    .dataframe {
+        background-color: #0d1117 !important;
     }
-    
-    /* Labels */
-    .stTextInput label, .stSelectbox label, .stDateInput label {
-        color: #c9d1d9 !important;
-    }
-    
-    /* Expanders */
-    .streamlit-expanderHeader {
+    .dataframe th {
         background-color: #1a1f2e !important;
         color: #58a6ff !important;
-        border: 1px solid #2d3348;
     }
-    .streamlit-expanderContent {
+    .dataframe td {
         background-color: #0d1117 !important;
-        border: 1px solid #2d3348;
+        color: #ffffff !important;
     }
     
     /* Alertas */
     .stAlert {
         background-color: #1a1f2e !important;
-        color: #e6edf3 !important;
     }
     .stSuccess {
         background-color: #1a3a2a !important;
@@ -163,65 +146,29 @@ st.markdown("""
     .stWarning {
         background-color: #3a2a1a !important;
     }
-    .stInfo {
-        background-color: #1a2a3a !important;
-    }
     
     /* Tabs */
     .stTabs [data-baseweb="tab"] {
         background-color: #1a1f2e !important;
         color: #c9d1d9 !important;
-        border: 1px solid #2d3348;
     }
     .stTabs [aria-selected="true"] {
         background-color: #1f6feb !important;
         color: #ffffff !important;
     }
     
-    /* Formularios */
-    .stForm {
-        background-color: transparent !important;
+    /* Expander */
+    .streamlit-expanderHeader {
+        background-color: #1a1f2e !important;
+        color: #58a6ff !important;
     }
-    
-    /* Dividers */
-    hr {
-        border-color: #2d3348 !important;
+    .streamlit-expanderContent {
+        background-color: #0d1117 !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
 # --- FUNCIONES ---
-def notificar(mensaje, tipo="info"):
-    if tipo == "success":
-        st.toast(f"✅ {mensaje}", icon="🎉")
-    elif tipo == "error":
-        st.toast(f"❌ {mensaje}", icon="⚠️")
-    elif tipo == "warning":
-        st.toast(f"⚠️ {mensaje}", icon="📢")
-    else:
-        st.toast(f"ℹ️ {mensaje}", icon="📋")
-
-def log_accion(usuario, accion, detalles):
-    try:
-        sheet = conectar_gsheet()
-        if sheet:
-            try:
-                ws_log = sheet.worksheet("Logs")
-                ws_log.append_row([
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    str(usuario),
-                    accion,
-                    str(detalles)
-                ])
-            except:
-                try:
-                    ws_log = sheet.add_worksheet(title="Logs", rows="1000", cols="20")
-                    ws_log.append_row(["TIMESTAMP", "USUARIO", "ACCION", "DETALLES"])
-                except:
-                    pass
-    except:
-        pass
-
 @st.cache_resource(ttl=600)
 def conectar_gsheet():
     try:
@@ -241,7 +188,6 @@ def obtener_datos_tabla(nombre_pestaña):
         sheet = conectar_gsheet()
         if not sheet:
             return pd.DataFrame()
-        
         ws = sheet.worksheet(nombre_pestaña)
         data = ws.get_all_values()
         if len(data) > 1:
@@ -261,7 +207,6 @@ def guardar_registro(datos):
         sheet = conectar_gsheet()
         if not sheet:
             return False, "Sin conexión"
-        
         ws = sheet.worksheet("Registros")
         ws.append_row(list(datos.values()))
         return True, "Registro guardado"
@@ -302,8 +247,6 @@ if not st.session_state.logueado:
                                     'nombre': match.iloc[0].get('NOMBRE', u),
                                     'rol': match.iloc[0].get('ROL', 'OPERADOR')
                                 }
-                                log_accion(u, "LOGIN", "Exitoso")
-                                notificar(f"Bienvenido", "success")
                                 time.sleep(0.5)
                                 st.rerun()
                             else:
@@ -319,13 +262,10 @@ else:
         st.markdown(f"### {st.session_state.user_info.get('nombre', 'OPERADOR')}")
         st.caption(f"{st.session_state.user_info.get('rol', 'OPERADOR')}")
         st.write("---")
-        
         if st.button("SALIR", use_container_width=True):
-            log_accion(st.session_state.user_info.get('dni', ''), "LOGOUT", "Cierre")
             st.session_state.logueado = False
             st.session_state.user_info = {}
             st.rerun()
-        
         st.caption(f"Versión: 3.0")
         st.caption(f"{datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
@@ -384,8 +324,7 @@ else:
                     ok, msg = guardar_registro(registro)
                     if ok:
                         st.balloons()
-                        notificar(msg, "success")
-                        log_accion(st.session_state.user_info.get('dni', ''), "REGISTRO", f"{agente} - {fecha_str}")
+                        st.success(msg)
                         st.cache_data.clear()
                         time.sleep(1)
                         st.rerun()
@@ -396,11 +335,8 @@ else:
     
     with col_info:
         st.subheader("ÚLTIMOS REGISTROS")
-        
         df_reg = obtener_datos_tabla("Registros")
-        
         if not df_reg.empty:
-            # Mostrar últimos registros sin observaciones
             df_recent = df_reg.head(10)[['FECHA', 'APELLIDO Y NOMBRES', 'DEPENDENCIA']]
             st.dataframe(df_recent, use_container_width=True, hide_index=True)
         else:
@@ -416,9 +352,5 @@ else:
                 with cols[i % 3]:
                     st.metric(dep, cnt)
 
-# --- FOOTER ---
 st.markdown("---")
-st.markdown(
-    "<p style='text-align: center; color: #8b949e;'>Regional V - Sistema de Gestión</p>", 
-    unsafe_allow_html=True
-)
+st.markdown("<p style='text-align: center; color: #8b949e;'>Regional V - Sistema de Gestión</p>", unsafe_allow_html=True)
