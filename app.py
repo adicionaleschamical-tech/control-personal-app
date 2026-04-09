@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- ESTILO TÁCTICO OSCURO (OPCIONAL) ---
+# --- ESTILO TÁCTICO OSCURO ---
 st.markdown("""
     <style>
     .main { background-color: #0e1117; color: white; }
@@ -35,7 +35,7 @@ def conectar_gsheet():
     except:
         return None
 
-@st.cache_data(ttl=60) # Cache de 1 minuto para no saturar Google
+@st.cache_data(ttl=60)
 def obtener_datos(nombre_pestaña):
     try:
         sheet = conectar_gsheet()
@@ -106,28 +106,27 @@ else:
             fecha = st.date_input("Fecha", datetime.now())
             lista_nombres = sorted(df_nomina['APELLIDO Y NOMBRES'].tolist()) if not df_nomina.empty else []
             agente = st.selectbox("Efectivo", ["-- SELECCIONE --"] + lista_nombres)
-            obs = st.text_input("Observaciones")
+            
+            # El campo de observaciones ha sido removido
             
             if st.form_submit_button("💾 GUARDAR SERVICIO", type="primary", use_container_width=True):
                 if agente != "-- SELECCIONE --":
-                    # Extraer datos del agente
                     datos_ag = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente].iloc[0]
                     
+                    # Preparamos el registro (enviamos vacío el campo que era para observaciones)
                     nuevo_reg = [
                         fecha.strftime("%d/%m/%Y"),
                         agente,
                         str(datos_ag['DNI']),
                         datos_ag['DEPENDENCIA'],
-                        obs
+                        "" # Espacio de observación vacío
                     ]
                     
-                    # GUARDADO DIRECTO
                     try:
                         sheet = conectar_gsheet()
                         ws_reg = sheet.worksheet("Registros")
                         ws_reg.append_row(nuevo_reg)
                         
-                        # LIMPIEZA DE CACHÉ PARA VER EL CAMBIO AL INSTANTE
                         st.cache_data.clear()
                         st.success(f"✅ ¡Servicio de {agente} guardado!")
                         st.balloons()
@@ -141,11 +140,11 @@ else:
     with col_list:
         st.subheader("📋 Últimos Servicios Cargados")
         if not df_registros.empty:
-            # INVERTIMOS EL DATAFRAME: Los nuevos (abajo en Excel) aparecen ARRIBA en la App
+            # Mostramos las columnas principales (excluyendo observaciones si lo deseas)
             df_visualizar = df_registros.iloc[::-1].head(10)
             
             st.dataframe(
-                df_visualizar[['FECHA', 'APELLIDO Y NOMBRES', 'DEPENDENCIA', 'OBSERVACIONES']], 
+                df_visualizar[['FECHA', 'APELLIDO Y NOMBRES', 'DEPENDENCIA']], 
                 use_container_width=True, 
                 hide_index=True
             )
@@ -154,6 +153,6 @@ else:
                 st.cache_data.clear()
                 st.rerun()
         else:
-            st.info("No hay registros recientes para mostrar.")
+            st.info("No hay registros recientes.")
 
-    st.caption("Nota: Si no visualiza un cambio reciente, presione 'Refrescar Lista'.")
+    st.caption("Interfaz simplificada: Carga directa de personal.")
