@@ -3,7 +3,6 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime
-import time
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -55,6 +54,8 @@ if 'logueado' not in st.session_state:
     st.session_state.logueado = False
 if 'user_info' not in st.session_state:
     st.session_state.user_info = {}
+if 'mensaje_exito' not in st.session_state:
+    st.session_state.mensaje_exito = None
 
 # --- LOGIN ---
 if not st.session_state.logueado:
@@ -72,6 +73,7 @@ if not st.session_state.logueado:
                     if not match.empty:
                         st.session_state.logueado = True
                         st.session_state.user_info = {'dni': u, 'nombre': match.iloc[0].get('NOMBRE', u)}
+                        st.session_state.mensaje_exito = None
                         st.rerun()
                     else:
                         st.error("Credenciales Inválidas")
@@ -82,9 +84,18 @@ else:
         st.write(f"**Operador:** {st.session_state.user_info['nombre']}")
         if st.button("🚪 CERRAR SESIÓN"):
             st.session_state.logueado = False
+            st.session_state.user_info = {}
+            st.session_state.mensaje_exito = None
             st.rerun()
 
     st.title("👮‍♂️ Carga de Servicios - UR-V")
+    
+    # Mostrar mensaje de éxito si existe
+    if st.session_state.mensaje_exito:
+        st.success(st.session_state.mensaje_exito)
+        st.balloons()
+        # Limpiar el mensaje después de mostrarlo (pero mantener la sesión)
+        st.session_state.mensaje_exito = None
     
     # Carga de datos
     df_nomina = obtener_datos("Nómina")
@@ -127,10 +138,13 @@ else:
                         ws_reg = sheet.worksheet("Registros")
                         ws_reg.append_row(nuevo_reg)
                         
+                        # Limpiar caché de datos
                         st.cache_data.clear()
-                        st.success(f"✅ ¡Servicio de {agente} guardado!")
-                        st.balloons()
-                        time.sleep(1)
+                        
+                        # Guardar mensaje de éxito en session_state
+                        st.session_state.mensaje_exito = f"✅ ¡Servicio de {agente} guardado!"
+                        
+                        # Recargar la página para actualizar datos pero mantener sesión
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error al guardar: {e}")
