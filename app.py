@@ -49,6 +49,32 @@ def obtener_datos(nombre_pestaña):
     except:
         return pd.DataFrame()
 
+# --- FUNCIÓN PARA VERIFICAR SI EL EFECTIVO YA HIZO SERVICIO EN ESA FECHA ---
+def efectivo_ya_registrado(df_registros, nombre_agente, fecha_servicio):
+    """
+    Verifica en TODOS los registros históricos (no solo los mostrados)
+    si el efectivo ya tiene un registro en la fecha especificada.
+    """
+    if df_registros.empty:
+        return False
+    
+    # Formatear la fecha a comparar
+    fecha_str = fecha_servicio.strftime("%d/%m/%Y")
+    
+    # Limpiar posibles espacios en blanco en los nombres
+    df_temp = df_registros.copy()
+    df_temp['FECHA'] = df_temp['FECHA'].astype(str).str.strip()
+    df_temp['APELLIDO Y NOMBRES'] = df_temp['APELLIDO Y NOMBRES'].astype(str).str.strip()
+    nombre_agente_clean = nombre_agente.strip()
+    
+    # Buscar coincidencias exactas
+    coincidencias = df_temp[
+        (df_temp['FECHA'] == fecha_str) & 
+        (df_temp['APELLIDO Y NOMBRES'] == nombre_agente_clean)
+    ]
+    
+    return len(coincidencias) > 0
+
 # --- SESIÓN ---
 if 'logueado' not in st.session_state:
     st.session_state.logueado = False
@@ -94,7 +120,6 @@ else:
     if st.session_state.mensaje_exito:
         st.success(st.session_state.mensaje_exito)
         st.balloons()
-        # Limpiar el mensaje después de mostrarlo (pero mantener la sesión)
         st.session_state.mensaje_exito = None
     
     # Carga de datos
@@ -113,49 +138,58 @@ else:
 
     with col_form:
         st.subheader("📝 Nuevo Registro")
+        
+        # Mostrar información de verificación
+        if not df_registros.empty:
+            st.caption(f"🔍 Verificando duplicados en {len(df_registros)} registros históricos")
+        
         with st.form("registro_form", clear_on_submit=True):
             fecha = st.date_input("Fecha", datetime.now())
             lista_nombres = sorted(df_nomina['APELLIDO Y NOMBRES'].tolist()) if not df_nomina.empty else []
             agente = st.selectbox("Efectivo", ["-- SELECCIONE --"] + lista_nombres)
             
-            # El campo de observaciones ha sido removido
-            
             if st.form_submit_button("💾 GUARDAR SERVICIO", type="primary", use_container_width=True):
                 if agente != "-- SELECCIONE --":
-                    datos_ag = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente].iloc[0]
                     
-                    # Preparamos el registro (enviamos vacío el campo que era para observaciones)
-                    nuevo_reg = [
-                        fecha.strftime("%d/%m/%Y"),
-                        agente,
-                        str(datos_ag['DNI']),
-                        datos_ag['DEPENDENCIA'],
-                        "" # Espacio de observación vacío
-                    ]
-                    
-                    try:
-                        sheet = conectar_gsheet()
-                        ws_reg = sheet.worksheet("Registros")
-                        ws_reg.append_row(nuevo_reg)
+                    # --- VERIFICACIÓN DE DUPLICADO (revisando TODOS los registros) ---
+                    if efectivo_ya_registrado(df_registros, agente, fecha):
+                        st.error(f"⚠️ El efectivo **{agente}** ya tiene un registro cargado para el **{fecha.strftime('%d/%m/%Y')}**")
+                        st.info("No se permite cargar dos servicios del mismo efectivo en la misma fecha.")
+                    else:
+                        datos_ag = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente].iloc[0]
                         
-                        # Limpiar caché de datos
-                        st.cache_data.clear()
+                        # Preparamos el registro
+                        nuevo_reg = [
+                            fecha.strftime("%d/%m/%Y"),
+                            agente,
+                            str(datos_ag['DNI']),
+                            datos_ag['DEPENDENCIA'],
+                            ""
+                        ]
                         
-                        # Guardar mensaje de éxito en session_state
-                        st.session_state.mensaje_exito = f"✅ ¡Servicio de {agente} guardado!"
-                        
-                        # Recargar la página para actualizar datos pero mantener sesión
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error al guardar: {e}")
+                        try:
+                            sheet = conectar_gsheet()
+                            ws_reg = sheet.worksheet("Registros")
+                            ws_reg.append_row(nuevo_reg)
+                            
+                            # Limpiar caché de datos
+                            st.cache_data.clear()
+                            
+                            # Guardar mensaje de éxito en session_state
+                            st.session_state.mensaje_exito = f"✅ ¡Servicio de {agente} guardado!"
+                            
+                            # Recargar la página para actualizar datos pero mantener sesión
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al guardar: {e}")
                 else:
                     st.warning("Seleccione un agente.")
 
     with col_list:
         st.subheader("📋 Últimos Servicios Cargados")
         if not df_registros.empty:
-            # Mostramos las columnas principales (excluyendo observaciones si lo deseas)
-            df_visualizar = df_registros.iloc[::-1].head(10)
+            # Mostramos las columnas principales (ordenadas por fecha descendente)
+            df_visualizar = df_registros.sort_values('FECHA', ascending=False).head(10)
             
             st.dataframe(
                 df_visualizar[['FECHA', 'APELLIDO Y NOMBRES', 'DEPENDENCIA']], 
@@ -169,4 +203,4 @@ else:
         else:
             st.info("No hay registros recientes.")
 
-    st.caption("Interfaz simplificada: Carga directa de personal.")
+    st.caption("Sistema de carga de servicios - Verifica duplicados en todos los registros históricos")
