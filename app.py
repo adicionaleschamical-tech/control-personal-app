@@ -3,6 +3,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime
+import unicodedata
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -21,6 +22,16 @@ st.markdown("""
     div[data-testid="stAlert"] { border-radius: 8px; }
     </style>
     """, unsafe_allow_html=True)
+
+# --- FUNCIÓN PARA NORMALIZAR TEXTO (eliminar acentos y mayúsculas) ---
+def normalizar_texto(texto):
+    """Elimina acentos, convierte a minúsculas y quita espacios extras"""
+    if pd.isna(texto) or texto is None:
+        return ""
+    texto = str(texto).strip().lower()
+    # Eliminar acentos
+    texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('ASCII')
+    return texto
 
 # --- CONEXIÓN Y CONSULTAS ---
 
@@ -51,22 +62,33 @@ def obtener_datos_sin_cache(nombre_pestaña):
         st.error(f"Error al obtener datos: {e}")
         return pd.DataFrame()
 
-# --- FUNCIÓN PARA OBTENER HISTORIAL DEL EFECTIVO ---
+# --- FUNCIÓN PARA OBTENER HISTORIAL DEL EFECTIVO (COMPARACIÓN INTELIGENTE) ---
 def obtener_historial_efectivo(df_registros, nombre_agente):
-    """Retorna todas las fechas en que aparece el efectivo en los registros"""
+    """
+    Retorna todas las fechas donde el efectivo aparece en registros.
+    Compara NORMALIZANDO el texto (sin acentos, mayúsculas, espacios)
+    """
     if df_registros.empty:
         return []
     
-    nombre_clean = nombre_agente.strip()
+    nombre_normalizado = normalizar_texto(nombre_agente)
     fechas = []
     
     for idx, row in df_registros.iterrows():
-        nombre_reg = str(row.get('APELLIDO Y NOMBRES', '')).strip()
-        if nombre_reg == nombre_clean:
+        nombre_reg = row.get('APELLIDO Y NOMBRES', '')
+        nombre_reg_normalizado = normalizar_texto(nombre_reg)
+        
+        if nombre_reg_normalizado == nombre_normalizado:
             fecha_reg = str(row.get('FECHA', '')).strip()
             fechas.append(fecha_reg)
     
     return fechas
+
+# --- FUNCIÓN PARA VERIFICAR SI UN NOMBRE EXISTE EN REGISTROS ---
+def efectivo_tiene_registros(df_registros, nombre_agente):
+    """Retorna True si el efectivo ya tiene al menos un registro"""
+    historial = obtener_historial_efectivo(df_registros, nombre_agente)
+    return len(historial) > 0, historial
 
 # --- SESIÓN ---
 if 'logueado' not in st.session_state:
@@ -139,7 +161,7 @@ else:
 
     st.divider()
     
-    # --- MODAL DE CONFIRMACIÓN (se muestra ANTES del formulario si hay pendiente) ---
+    # --- MODAL DE CONFIRMACIÓN ---
     if st.session_state.confirmar_duplicado:
         agente_pendiente, fecha_pendiente, historial = st.session_state.confirmar_duplicado
         
@@ -154,7 +176,6 @@ else:
         col_si, col_no = st.columns(2)
         with col_si:
             if st.button("✅ SÍ, CARGAR DE TODOS MODOS", use_container_width=True):
-                # Guardar el registro
                 datos_ag = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente_pendiente].iloc[0]
                 nuevo_reg = [
                     fecha_pendiente,
@@ -195,14 +216,16 @@ else:
             lista_nombres = sorted(df_nomina['APELLIDO Y NOMBRES'].tolist()) if not df_nomina.empty else []
             agente = st.selectbox("Efectivo", ["-- SELECCIONE --"] + lista_nombres)
             
-            # --- MOSTRAR ADVERTENCIA INMEDIATA si el efectivo ya tiene registros ---
+            # --- ADVERTENCIA INMEDIATA (con comparación inteligente) ---
             if agente != "-- SELECCIONE --" and not df_registros.empty:
-                historial = obtener_historial_efectivo(df_registros, agente)
-                if len(historial) > 0:
+                tiene_registros, historial = efectivo_tiene_registros(df_registros, agente)
+                if tiene_registros:
                     st.warning(f"⚠️ **ATENCIÓN:** Este efectivo ya tiene {len(historial)} servicio(s) registrado(s) anteriormente:")
-                    for fecha_ant in historial:
+                    for fecha_ant in historial[:5]:  # Mostrar máximo 5
                         st.write(f"  • {fecha_ant}")
-                    st.info("Puedes continuar con la carga si lo deseas. Se te pedirá confirmación.")
+                    if len(historial) > 5:
+                        st.write(f"  • ... y {len(historial) - 5} más")
+                    st.info("Puedes continuar con la carga. Se te pedirá confirmación final.")
             
             submitted = st.form_submit_button("💾 GUARDAR SERVICIO", type="primary", use_container_width=True)
             
@@ -210,15 +233,13 @@ else:
                 if agente == "-- SELECCIONE --":
                     st.warning("Seleccione un agente.")
                 else:
-                    # Verificar historial
-                    historial = obtener_historial_efectivo(df_registros, agente)
+                    # Verificar historial con comparación inteligente
+                    tiene_registros, historial = efectivo_tiene_registros(df_registros, agente)
                     
-                    if len(historial) > 0:
-                        # Guardar en sesión para confirmación
+                    if tiene_registros:
                         st.session_state.confirmar_duplicado = (agente, fecha.strftime("%d/%m/%Y"), historial)
                         st.rerun()
                     else:
-                        # Guardar directamente
                         datos_ag = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente].iloc[0]
                         nuevo_reg = [
                             fecha.strftime("%d/%m/%Y"),
@@ -249,14 +270,13 @@ else:
                 hide_index=True
             )
             
-            # Mostrar estadísticas del efectivo seleccionado (si hay)
             if 'agente' in locals() and agente != "-- SELECCIONE --":
-                historial_efectivo = obtener_historial_efectivo(df_registros, agente)
-                if historial_efectivo:
+                _, historial = efectivo_tiene_registros(df_registros, agente)
+                if historial:
                     with st.expander(f"📜 Historial completo de {agente}"):
-                        for fecha in historial_efectivo:
+                        for fecha in historial:
                             st.write(f"• {fecha}")
         else:
             st.info("No hay registros en el sistema")
 
-    st.caption("✅ **Control activo:** Se muestra advertencia si el efectivo YA TIENE registros previos")
+    st.caption("✅ **Control inteligente:** Compara ignorando acentos, mayúsculas y espacios")
