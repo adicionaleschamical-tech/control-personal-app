@@ -34,7 +34,7 @@ def conectar_gsheet():
     except:
         return None
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=30)  # Reducido a 30 segundos para mejor actualización
 def obtener_datos(nombre_pestaña):
     try:
         sheet = conectar_gsheet()
@@ -46,32 +46,44 @@ def obtener_datos(nombre_pestaña):
             df.columns = [c.strip() for c in df.columns]
             return df
         return pd.DataFrame()
-    except:
+    except Exception as e:
+        st.error(f"Error al obtener datos: {e}")
         return pd.DataFrame()
 
-# --- FUNCIÓN PARA VERIFICAR SI EL EFECTIVO YA HIZO SERVICIO EN ESA FECHA ---
-def efectivo_ya_registrado(df_registros, nombre_agente, fecha_servicio):
+# --- FUNCIÓN MEJORADA PARA VERIFICAR DUPLICADO EN COLUMNA B ---
+def efectivo_ya_registrado_hoy(df_registros, nombre_agente, fecha_servicio):
     """
-    Verifica en TODOS los registros históricos (no solo los mostrados)
-    si el efectivo ya tiene un registro en la fecha especificada.
+    Verifica si el efectivo (columna B: APELLIDO Y NOMBRES) 
+    ya tiene un registro en la fecha especificada (columna A: FECHA)
     """
     if df_registros.empty:
         return False
     
-    # Formatear la fecha a comparar
+    # Crear copia para no modificar original
+    df_check = df_registros.copy()
+    
+    # Limpiar y estandarizar formato de fechas
+    df_check['FECHA'] = df_check['FECHA'].astype(str).str.strip()
+    
+    # Convertir la fecha seleccionada al MISMO formato que tiene Google Sheets
     fecha_str = fecha_servicio.strftime("%d/%m/%Y")
     
-    # Limpiar posibles espacios en blanco en los nombres
-    df_temp = df_registros.copy()
-    df_temp['FECHA'] = df_temp['FECHA'].astype(str).str.strip()
-    df_temp['APELLIDO Y NOMBRES'] = df_temp['APELLIDO Y NOMBRES'].astype(str).str.strip()
+    # Limpiar nombres
+    df_check['APELLIDO Y NOMBRES'] = df_check['APELLIDO Y NOMBRES'].astype(str).str.strip()
     nombre_agente_clean = nombre_agente.strip()
     
-    # Buscar coincidencias exactas
-    coincidencias = df_temp[
-        (df_temp['FECHA'] == fecha_str) & 
-        (df_temp['APELLIDO Y NOMBRES'] == nombre_agente_clean)
+    # Buscar coincidencias EXACTAS
+    coincidencias = df_check[
+        (df_check['FECHA'] == fecha_str) & 
+        (df_check['APELLIDO Y NOMBRES'] == nombre_agente_clean)
     ]
+    
+    # DEBUG: Mostrar información en la app (solo si hay más de 0 coincidencias)
+    if len(coincidencias) > 0:
+        st.warning(f"🔍 DEBUG: Se encontró {len(coincidencias)} coincidencia(s)")
+        st.write(f"Fecha buscada: '{fecha_str}'")
+        st.write(f"Nombre buscado: '{nombre_agente_clean}'")
+        st.write("Registros coincidentes:", coincidencias[['FECHA', 'APELLIDO Y NOMBRES']].head())
     
     return len(coincidencias) > 0
 
@@ -139,10 +151,6 @@ else:
     with col_form:
         st.subheader("📝 Nuevo Registro")
         
-        # Mostrar información de verificación
-        if not df_registros.empty:
-            st.caption(f"🔍 Verificando duplicados en {len(df_registros)} registros históricos")
-        
         with st.form("registro_form", clear_on_submit=True):
             fecha = st.date_input("Fecha", datetime.now())
             lista_nombres = sorted(df_nomina['APELLIDO Y NOMBRES'].tolist()) if not df_nomina.empty else []
@@ -151,14 +159,15 @@ else:
             if st.form_submit_button("💾 GUARDAR SERVICIO", type="primary", use_container_width=True):
                 if agente != "-- SELECCIONE --":
                     
-                    # --- VERIFICACIÓN DE DUPLICADO (revisando TODOS los registros) ---
-                    if efectivo_ya_registrado(df_registros, agente, fecha):
-                        st.error(f"⚠️ El efectivo **{agente}** ya tiene un registro cargado para el **{fecha.strftime('%d/%m/%Y')}**")
-                        st.info("No se permite cargar dos servicios del mismo efectivo en la misma fecha.")
+                    # --- VERIFICACIÓN: ¿El efectivo ya tiene servicio en esta fecha? ---
+                    if efectivo_ya_registrado_hoy(df_registros, agente, fecha):
+                        st.error(f"❌ **NO SE PUEDE GUARDAR**")
+                        st.error(f"El efectivo **{agente}** YA TIENE un registro cargado para la fecha **{fecha.strftime('%d/%m/%Y')}**")
+                        st.info("Cada efectivo solo puede tener UN servicio por día.")
                     else:
+                        # Proceder a guardar
                         datos_ag = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente].iloc[0]
                         
-                        # Preparamos el registro
                         nuevo_reg = [
                             fecha.strftime("%d/%m/%Y"),
                             agente,
@@ -172,13 +181,10 @@ else:
                             ws_reg = sheet.worksheet("Registros")
                             ws_reg.append_row(nuevo_reg)
                             
-                            # Limpiar caché de datos
+                            # Limpiar caché para forzar actualización
                             st.cache_data.clear()
                             
-                            # Guardar mensaje de éxito en session_state
-                            st.session_state.mensaje_exito = f"✅ ¡Servicio de {agente} guardado!"
-                            
-                            # Recargar la página para actualizar datos pero mantener sesión
+                            st.session_state.mensaje_exito = f"✅ ¡Servicio de {agente} guardado correctamente!"
                             st.rerun()
                         except Exception as e:
                             st.error(f"Error al guardar: {e}")
@@ -188,7 +194,7 @@ else:
     with col_list:
         st.subheader("📋 Últimos Servicios Cargados")
         if not df_registros.empty:
-            # Mostramos las columnas principales (ordenadas por fecha descendente)
+            # Mostrar ordenado por fecha descendente
             df_visualizar = df_registros.sort_values('FECHA', ascending=False).head(10)
             
             st.dataframe(
@@ -197,10 +203,17 @@ else:
                 hide_index=True
             )
             
+            # Botón para forzar refresco manual
             if st.button("🔄 REFRESCAR LISTA"):
                 st.cache_data.clear()
                 st.rerun()
+            
+            # Opcional: Mostrar estadísticas de hoy
+            hoy = datetime.now().strftime("%d/%m/%Y")
+            registros_hoy = df_registros[df_registros['FECHA'].astype(str).str.strip() == hoy]
+            st.caption(f"📊 Registros cargados hoy ({hoy}): {len(registros_hoy)}")
+            
         else:
             st.info("No hay registros recientes.")
 
-    st.caption("Sistema de carga de servicios - Verifica duplicados en todos los registros históricos")
+    st.caption("✅ Sistema con control de duplicados: Mismo efectivo NO puede tener dos servicios en la misma fecha")
