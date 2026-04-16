@@ -65,6 +65,8 @@ if 'user_info' not in st.session_state:
     st.session_state.user_info = {}
 if 'mensaje_exito' not in st.session_state:
     st.session_state.mensaje_exito = None
+if 'confirmar_carga' not in st.session_state:
+    st.session_state.confirmar_carga = None
 
 # --- LOGIN ---
 if not st.session_state.logueado:
@@ -83,6 +85,7 @@ if not st.session_state.logueado:
                         st.session_state.logueado = True
                         st.session_state.user_info = {'dni': u, 'nombre': match.iloc[0].get('NOMBRE', u)}
                         st.session_state.mensaje_exito = None
+                        st.session_state.confirmar_carga = None
                         st.rerun()
                     else:
                         st.error("Credenciales Inválidas")
@@ -100,7 +103,6 @@ else:
         st.write(f"**Operador:** {st.session_state.user_info['nombre']}")
         
         if st.button("🚪 CERRAR SESIÓN", use_container_width=True):
-            # Limpiar TODAS las variables de sesión
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
@@ -112,6 +114,49 @@ else:
         st.success(st.session_state.mensaje_exito)
         st.balloons()
         st.session_state.mensaje_exito = None
+    
+    # --- MODAL DE CONFIRMACIÓN (si hay que confirmar) ---
+    if st.session_state.confirmar_carga:
+        agente, fecha, fechas_previas = st.session_state.confirmar_carga
+        
+        st.warning(f"⚠️ **EL EFECTIVO {agente} YA TIENE {len(fechas_previas)} SERVICIO(S) PREVIO(S)**")
+        st.write("Fechas anteriores:")
+        for f in fechas_previas[:5]:
+            st.write(f"  • {f}")
+        if len(fechas_previas) > 5:
+            st.write(f"  • ... y {len(fechas_previas)-5} más")
+        
+        st.info("¿Desea cargar otro servicio para este efectivo de todas formas?")
+        
+        col_si, col_no = st.columns(2)
+        with col_si:
+            if st.button("✅ SÍ, CARGAR DE TODOS MODOS", use_container_width=True):
+                # Guardar el registro
+                datos_ag = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente].iloc[0]
+                nuevo_reg = [
+                    fecha,
+                    agente,
+                    str(datos_ag['DNI']),
+                    datos_ag['DEPENDENCIA'],
+                    f"CARGA AUTORIZADA - EFECTIVO CON {len(fechas_previas)} REGISTROS PREVIOS"
+                ]
+                
+                try:
+                    ws_reg = sheet.worksheet("Registros")
+                    ws_reg.append_row(nuevo_reg)
+                    st.session_state.confirmar_carga = None
+                    st.session_state.mensaje_exito = f"✅ ¡Servicio de {agente} guardado!"
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al guardar: {e}")
+                    st.session_state.confirmar_carga = None
+        
+        with col_no:
+            if st.button("❌ NO, CANCELAR", use_container_width=True):
+                st.session_state.confirmar_carga = None
+                st.rerun()
+        
+        st.stop()
     
     # Métricas
     c1, c2, c3 = st.columns(3)
@@ -132,18 +177,16 @@ else:
             lista_nombres = sorted(df_nomina['APELLIDO Y NOMBRES'].tolist()) if not df_nomina.empty else []
             agente = st.selectbox("Efectivo", ["-- SELECCIONE --"] + lista_nombres)
             
-            # --- ADVERTENCIA INMEDIATA (apenas se selecciona) ---
+            # --- ADVERTENCIA INMEDIATA (solo informativa, NO bloquea) ---
             if agente != "-- SELECCIONE --" and not df_registros.empty:
-                # Buscar si el nombre existe en registros
                 existe = (df_registros['APELLIDO Y NOMBRES'] == agente).any()
                 
                 if existe:
                     fechas = df_registros[df_registros['APELLIDO Y NOMBRES'] == agente]['FECHA'].tolist()
-                    st.error(f"⚠️ **ADVERTENCIA: Este efectivo YA TIENE {len(fechas)} servicio(s) previo(s)**")
-                    for f in fechas[:5]:
-                        st.write(f"  • {f}")
-                    if len(fechas) > 5:
-                        st.write(f"  • ... y {len(fechas)-5} más")
+                    st.warning(f"⚠️ **ATENCIÓN:** Este efectivo ya tiene {len(fechas)} servicio(s) previo(s)")
+                    with st.expander("Ver fechas anteriores"):
+                        for f in fechas:
+                            st.write(f"  • {f}")
             
             submitted = st.form_submit_button("💾 GUARDAR SERVICIO", type="primary", use_container_width=True)
             
@@ -151,15 +194,18 @@ else:
                 if agente == "-- SELECCIONE --":
                     st.warning("Seleccione un agente")
                 else:
-                    # Verificar nuevamente con datos frescos
+                    # Verificar si ya existe para mostrar confirmación
                     df_registros_fresco = leer_registros(sheet)
                     existe = (df_registros_fresco['APELLIDO Y NOMBRES'] == agente).any()
                     
                     if existe:
-                        st.error(f"❌ **BLOQUEADO:** {agente} ya tiene servicio(s) previo(s)")
-                        st.info("No se permite cargar más de un servicio por efectivo en todo el sistema")
+                        # Obtener fechas previas
+                        fechas_previas = df_registros_fresco[df_registros_fresco['APELLIDO Y NOMBRES'] == agente]['FECHA'].tolist()
+                        # Guardar en sesión para mostrar modal
+                        st.session_state.confirmar_carga = (agente, fecha.strftime("%d/%m/%Y"), fechas_previas)
+                        st.rerun()
                     else:
-                        # Guardar nuevo registro
+                        # Guardar directamente (efectivo nuevo)
                         datos_ag = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente].iloc[0]
                         nuevo_reg = [
                             fecha.strftime("%d/%m/%Y"),
@@ -172,7 +218,7 @@ else:
                         try:
                             ws_reg = sheet.worksheet("Registros")
                             ws_reg.append_row(nuevo_reg)
-                            st.session_state.mensaje_exito = f"✅ ¡Servicio de {agente} guardado correctamente!"
+                            st.session_state.mensaje_exito = f"✅ ¡Servicio de {agente} guardado!"
                             st.rerun()
                         except Exception as e:
                             st.error(f"Error al guardar: {e}")
@@ -189,4 +235,4 @@ else:
         else:
             st.info("No hay registros recientes.")
     
-    st.caption("✅ **Control activo:** Se muestra advertencia inmediata al seleccionar un efectivo con registros previos")
+    st.caption("✅ **Control activo:** Se advierte si el efectivo ya tiene registros, pero se permite cargar nuevamente si se confirma")
