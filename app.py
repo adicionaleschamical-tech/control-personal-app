@@ -30,10 +30,11 @@ def conectar_gsheet():
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
         return client.open_by_key(st.secrets["general"]["spreadsheet_id"])
-    except:
+    except Exception as e:
+        st.error(f"Error de conexión: {e}")
         return None
 
-# --- FUNCIONES PARA LEER DATOS ---
+# --- FUNCIONES DE LECTURA ---
 def leer_registros(sheet):
     try:
         ws_registros = sheet.worksheet("Registros")
@@ -57,6 +58,31 @@ def leer_nomina(sheet):
         return pd.DataFrame()
     except:
         return pd.DataFrame()
+
+# --- FUNCIÓN DE CIERRE DE MES ---
+def cerrar_mes(sheet):
+    try:
+        ws_registros = sheet.worksheet("Registros")
+        data = ws_registros.get_all_values()
+        
+        if len(data) <= 1:
+            return False, "No hay datos para archivar."
+
+        # Crear nombre para la nueva hoja (Historial)
+        nombre_historico = f"Backup_{datetime.now().strftime('%m_%Y_%H%M')}"
+        
+        # 1. Crear la nueva hoja y copiar datos
+        nueva_ws = sheet.add_worksheet(title=nombre_historico, rows=len(data), cols=len(data[0]))
+        nueva_ws.update(data)
+        
+        # 2. Limpiar la hoja "Registros" manteniendo encabezados
+        headers = [data[0]]
+        ws_registros.clear()
+        ws_registros.update(headers, 'A1')
+        
+        return True, f"Mes cerrado. Historial guardado como: {nombre_historico}"
+    except Exception as e:
+        return False, f"Error al cerrar mes: {str(e)}"
 
 # --- INICIALIZAR SESIÓN ---
 if 'logueado' not in st.session_state:
@@ -84,16 +110,12 @@ if not st.session_state.logueado:
                     if not match.empty:
                         st.session_state.logueado = True
                         st.session_state.user_info = {'dni': u, 'nombre': match.iloc[0].get('NOMBRE', u)}
-                        st.session_state.mensaje_exito = None
-                        st.session_state.confirmar_carga = None
                         st.rerun()
                     else:
                         st.error("Credenciales Inválidas")
 else:
     # --- APP PRINCIPAL ---
     sheet = conectar_gsheet()
-    
-    # Leer datos frescos
     df_nomina = leer_nomina(sheet)
     df_registros = leer_registros(sheet)
     
@@ -102,6 +124,22 @@ else:
         st.image("https://cdn-icons-png.flaticon.com/512/2092/2092663.png", width=70)
         st.write(f"**Operador:** {st.session_state.user_info['nombre']}")
         
+        st.divider()
+        
+        # Herramientas de Administrador
+        st.subheader("⚙️ Administración")
+        with st.expander("Finalizar Período"):
+            st.info("Esta acción moverá los registros a una hoja nueva y vaciará la tabla actual.")
+            if st.button("🚀 CERRAR MES", use_container_width=True):
+                exito, msg = cerrar_mes(sheet)
+                if exito:
+                    st.success(msg)
+                    st.balloons()
+                    st.rerun()
+                else:
+                    st.error(msg)
+
+        st.divider()
         if st.button("🚪 CERRAR SESIÓN", use_container_width=True):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
@@ -109,55 +147,32 @@ else:
     
     st.title("👮‍♂️ Carga de Servicios - UR-V")
     
-    # Mensaje de éxito
+    # Mensaje de éxito tras carga
     if st.session_state.mensaje_exito:
         st.success(st.session_state.mensaje_exito)
-        st.balloons()
         st.session_state.mensaje_exito = None
     
-    # --- MODAL DE CONFIRMACIÓN (si hay que confirmar) ---
+    # --- MODAL DE CONFIRMACIÓN DE DUPLICADO ---
     if st.session_state.confirmar_carga:
         agente, fecha, fechas_previas = st.session_state.confirmar_carga
+        st.warning(f"⚠️ **{agente} YA TIENE {len(fechas_previas)} REGISTRO(S)**")
+        st.info("¿Desea cargar otro servicio de todas formas?")
         
-        st.warning(f"⚠️ **EL EFECTIVO {agente} YA TIENE {len(fechas_previas)} SERVICIO(S) PREVIO(S)**")
-        st.write("Fechas anteriores:")
-        for f in fechas_previas[:5]:
-            st.write(f"  • {f}")
-        if len(fechas_previas) > 5:
-            st.write(f"  • ... y {len(fechas_previas)-5} más")
-        
-        st.info("¿Desea cargar otro servicio para este efectivo de todas formas?")
-        
-        col_si, col_no = st.columns(2)
-        with col_si:
-            if st.button("✅ SÍ, CARGAR DE TODOS MODOS", use_container_width=True):
-                # Guardar el registro
+        c_si, c_no = st.columns(2)
+        with c_si:
+            if st.button("✅ SÍ, CARGAR", use_container_width=True):
                 datos_ag = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente].iloc[0]
-                nuevo_reg = [
-                    fecha,
-                    agente,
-                    str(datos_ag['DNI']),
-                    datos_ag['DEPENDENCIA'],
-                    f"CARGA AUTORIZADA - EFECTIVO CON {len(fechas_previas)} REGISTROS PREVIOS"
-                ]
-                
-                try:
-                    ws_reg = sheet.worksheet("Registros")
-                    ws_reg.append_row(nuevo_reg)
-                    st.session_state.confirmar_carga = None
-                    st.session_state.mensaje_exito = f"✅ ¡Servicio de {agente} guardado!"
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error al guardar: {e}")
-                    st.session_state.confirmar_carga = None
-        
-        with col_no:
-            if st.button("❌ NO, CANCELAR", use_container_width=True):
+                nuevo_reg = [fecha, agente, str(datos_ag['DNI']), datos_ag['DEPENDENCIA'], "CARGA EXTRA"]
+                sheet.worksheet("Registros").append_row(nuevo_reg)
+                st.session_state.confirmar_carga = None
+                st.session_state.mensaje_exito = f"✅ Servicio guardado para {agente}"
+                st.rerun()
+        with c_no:
+            if st.button("❌ CANCELAR", use_container_width=True):
                 st.session_state.confirmar_carga = None
                 st.rerun()
-        
         st.stop()
-    
+
     # Métricas
     c1, c2, c3 = st.columns(3)
     c1.metric("👥 TOTAL PERSONAL", len(df_nomina))
@@ -171,68 +186,32 @@ else:
     
     with col_form:
         st.subheader("📝 Nuevo Registro")
-        
         with st.form("registro_form", clear_on_submit=True):
-            fecha = st.date_input("Fecha", datetime.now())
+            f_input = st.date_input("Fecha", datetime.now())
             lista_nombres = sorted(df_nomina['APELLIDO Y NOMBRES'].tolist()) if not df_nomina.empty else []
-            agente = st.selectbox("Efectivo", ["-- SELECCIONE --"] + lista_nombres)
-            
-            # --- ADVERTENCIA INMEDIATA (solo informativa, NO bloquea) ---
-            if agente != "-- SELECCIONE --" and not df_registros.empty:
-                existe = (df_registros['APELLIDO Y NOMBRES'] == agente).any()
-                
-                if existe:
-                    fechas = df_registros[df_registros['APELLIDO Y NOMBRES'] == agente]['FECHA'].tolist()
-                    st.warning(f"⚠️ **ATENCIÓN:** Este efectivo ya tiene {len(fechas)} servicio(s) previo(s)")
-                    with st.expander("Ver fechas anteriores"):
-                        for f in fechas:
-                            st.write(f"  • {f}")
+            agente_sel = st.selectbox("Efectivo", ["-- SELECCIONE --"] + lista_nombres)
             
             submitted = st.form_submit_button("💾 GUARDAR SERVICIO", type="primary", use_container_width=True)
             
             if submitted:
-                if agente == "-- SELECCIONE --":
+                if agente_sel == "-- SELECCIONE --":
                     st.warning("Seleccione un agente")
                 else:
-                    # Verificar si ya existe para mostrar confirmación
-                    df_registros_fresco = leer_registros(sheet)
-                    existe = (df_registros_fresco['APELLIDO Y NOMBRES'] == agente).any()
-                    
+                    existe = (df_registros['APELLIDO Y NOMBRES'] == agente_sel).any() if not df_registros.empty else False
                     if existe:
-                        # Obtener fechas previas
-                        fechas_previas = df_registros_fresco[df_registros_fresco['APELLIDO Y NOMBRES'] == agente]['FECHA'].tolist()
-                        # Guardar en sesión para mostrar modal
-                        st.session_state.confirmar_carga = (agente, fecha.strftime("%d/%m/%Y"), fechas_previas)
+                        previas = df_registros[df_registros['APELLIDO Y NOMBRES'] == agente_sel]['FECHA'].tolist()
+                        st.session_state.confirmar_carga = (agente_sel, f_input.strftime("%d/%m/%Y"), previas)
                         st.rerun()
                     else:
-                        # Guardar directamente (efectivo nuevo)
-                        datos_ag = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente].iloc[0]
-                        nuevo_reg = [
-                            fecha.strftime("%d/%m/%Y"),
-                            agente,
-                            str(datos_ag['DNI']),
-                            datos_ag['DEPENDENCIA'],
-                            ""
-                        ]
-                        
-                        try:
-                            ws_reg = sheet.worksheet("Registros")
-                            ws_reg.append_row(nuevo_reg)
-                            st.session_state.mensaje_exito = f"✅ ¡Servicio de {agente} guardado!"
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al guardar: {e}")
+                        datos_ag = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente_sel].iloc[0]
+                        nuevo_reg = [f_input.strftime("%d/%m/%Y"), agente_sel, str(datos_ag['DNI']), datos_ag['DEPENDENCIA'], ""]
+                        sheet.worksheet("Registros").append_row(nuevo_reg)
+                        st.session_state.mensaje_exito = f"✅ Servicio de {agente_sel} guardado!"
+                        st.rerun()
     
     with col_list:
-        st.subheader("📋 Últimos Servicios Cargados")
+        st.subheader("📋 Últimos Servicios")
         if not df_registros.empty:
-            df_visualizar = df_registros.sort_values('FECHA', ascending=False).head(10)
-            st.dataframe(
-                df_visualizar[['FECHA', 'APELLIDO Y NOMBRES', 'DEPENDENCIA']], 
-                use_container_width=True, 
-                hide_index=True
-            )
+            st.dataframe(df_registros.tail(10), use_container_width=True, hide_index=True)
         else:
             st.info("No hay registros recientes.")
-    
-    st.caption("✅ **Control activo:** Se advierte si el efectivo ya tiene registros, pero se permite cargar nuevamente si se confirma")
