@@ -5,6 +5,17 @@ import pandas as pd
 from datetime import datetime
 import json
 import time
+import os
+
+# ============================================================
+# 🔍 VERIFICACIÓN DE VERSIÓN - 10/08/2026 23:30
+# ============================================================
+st.error(f"""
+🔴🔴🔴 VERSIÓN DESDE GITHUB 🔴🔴🔴
+Fecha: 10/08/2026 23:30
+Hash: {os.environ.get('GITHUB_SHA', 'NO GITHUB - LOCAL')}
+Archivo: app.py
+""")
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
