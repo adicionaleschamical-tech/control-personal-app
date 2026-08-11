@@ -14,6 +14,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ============================================================
+# 🚨 VERSIÓN DEL CÓDIGO - VERIFICACIÓN VISIBLE
+# ============================================================
+st.markdown("""
+    <div style="background: #ff6b6b; color: white; padding: 10px 20px; border-radius: 10px; margin-bottom: 20px; font-weight: bold; font-size: 1.2rem; text-align: center;">
+        🚨 VERSIÓN NUEVA - TABLA EXCEL (25/11/2024) 
+        <span style="background: white; color: #ff6b6b; padding: 2px 10px; border-radius: 5px; margin-left: 10px;">VERIFICACIÓN OK</span>
+    </div>
+""", unsafe_allow_html=True)
+
 # --- ESTILO ---
 st.markdown("""
     <style>
@@ -71,7 +81,6 @@ def leer_usuarios(sheet):
 
 def guardar_propuesta(sheet, usuario_dni, usuario_nombre, dependencia, datos_originales, datos_nuevos):
     try:
-        # Verificar si existe la hoja Propuestas
         try:
             ws = sheet.worksheet("Propuestas")
         except:
@@ -118,19 +127,16 @@ def aprobar_propuesta(sheet, id_propuesta, admin_dni, admin_nombre):
         datos_nuevos = json.loads(propuesta['DATOS_NUEVOS'])
         datos_originales = json.loads(propuesta['DATOS_ORIGINALES'])
         
-        # Aplicar cambios a Nómina
         ws_nomina = sheet.worksheet("Nómina")
         nomina_data = ws_nomina.get_all_values()
         header_nomina = nomina_data[0]
         
-        # Buscar por DNI o APELLIDO Y NOMBRES
         dni_modificar = datos_nuevos.get('DNI')
         nombre_modificar = datos_nuevos.get('APELLIDO Y NOMBRES')
         
         cambios_aplicados = []
         fila_encontrada = False
         
-        # Si tenemos DNI, buscar por DNI
         if dni_modificar and 'DNI' in header_nomina:
             col_dni_idx = header_nomina.index('DNI')
             for i, row in enumerate(nomina_data[1:], start=2):
@@ -145,7 +151,6 @@ def aprobar_propuesta(sheet, id_propuesta, admin_dni, admin_nombre):
                     fila_encontrada = True
                     break
         
-        # Si no encontramos por DNI o no hay DNI, buscar por nombre
         if not fila_encontrada and nombre_modificar and 'APELLIDO Y NOMBRES' in header_nomina:
             col_nombre_idx = header_nomina.index('APELLIDO Y NOMBRES')
             for i, row in enumerate(nomina_data[1:], start=2):
@@ -160,11 +165,9 @@ def aprobar_propuesta(sheet, id_propuesta, admin_dni, admin_nombre):
                     fila_encontrada = True
                     break
         
-        # Registrar en auditoría
         registrar_auditoria(sheet, admin_dni, admin_nombre, propuesta['DEPENDENCIA'], 
                           f"APROBACION_CAMBIO: {propuesta['USUARIO_NOMBRE']} propuso - " + "; ".join(cambios_aplicados))
         
-        # Actualizar estado de la propuesta
         df_prop.loc[df_prop['ID'].astype(str) == str(id_propuesta), 'ESTADO'] = 'APROBADO'
         
         ws.clear()
@@ -302,7 +305,6 @@ else:
     df_nomina = leer_nomina(sheet)
     df_registros = leer_registros(sheet)
     
-    # Determinar rol
     es_admin = st.session_state.rol_usuario == 'ADMINISTRADOR'
     es_supervisor = st.session_state.rol_usuario == 'SUPERVISOR'
     es_comun = st.session_state.rol_usuario == 'COMUN'
@@ -339,6 +341,9 @@ else:
                 del st.session_state[key]
             st.rerun()
     
+    # ============================================================
+    # TÍTULO PRINCIPAL
+    # ============================================================
     st.title("👮‍♂️ Sistema de Gestión - UR-V")
     
     if st.session_state.mensaje_exito:
@@ -354,10 +359,9 @@ else:
         if df_nomina.empty:
             st.warning("No hay datos en la Nómina")
         else:
-            # --- MOSTRAR TODAS LAS COLUMNAS ---
             st.info(f"📊 Total de registros: {len(df_nomina)}")
             
-            # Mostrar la tabla completa (todas las columnas)
+            # Mostrar la tabla completa
             st.dataframe(
                 df_nomina,
                 use_container_width=True,
@@ -367,39 +371,32 @@ else:
             
             st.divider()
             
-            # --- SELECCIÓN DE FILA PARA EDITAR (SOLO USUARIOS COMUNES) ---
+            # --- USUARIO COMÚN: PROPORNER CAMBIOS ---
             if es_comun:
                 st.subheader("✏️ Proponer Cambios")
                 st.caption("Selecciona un agente para modificar sus datos")
                 
-                # Selector de agente
-                lista_nombres = sorted(df_nomina['APELLIDO Y NOMBRES'].tolist()) if 'APELLIDO Y NOMBRES' in df_nomina.columns else []
-                
-                if lista_nombres:
+                if 'APELLIDO Y NOMBRES' in df_nomina.columns:
+                    lista_nombres = sorted(df_nomina['APELLIDO Y NOMBRES'].tolist())
                     agente_seleccionado = st.selectbox("Seleccionar agente:", lista_nombres)
                     
                     if agente_seleccionado:
-                        # Obtener datos del agente
                         agente_data = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente_seleccionado].iloc[0]
                         
                         st.markdown("---")
                         st.subheader(f"📝 Modificar datos de: {agente_seleccionado}")
                         
-                        # Formulario de edición
                         with st.form(key="form_propuesta"):
                             st.markdown("**Complete los campos que desea modificar:**")
                             
-                            # Crear campos para todas las columnas
                             nuevos_valores = {}
                             columnas_a_mostrar = [col for col in df_nomina.columns if col not in ['N°', 'ID']]
                             
-                            # Organizar en columnas
                             cols = st.columns(3)
                             for idx, col in enumerate(columnas_a_mostrar):
                                 valor_actual = agente_data[col]
                                 with cols[idx % 3]:
                                     label = col
-                                    # Si es ULTIMO ASCENSO, destacarlo
                                     if col.upper() == "ULTIMO ASCENSO":
                                         nuevos_valores[col] = st.text_input(f"📌 {label}", value=str(valor_actual), key=f"edit_{col}")
                                     else:
@@ -407,11 +404,9 @@ else:
                             
                             st.divider()
                             
-                            # Botón de envío
                             submitted = st.form_submit_button("📤 ENVIAR PROPUESTA", type="primary", use_container_width=True)
                             
                             if submitted:
-                                # Detectar cambios
                                 datos_originales = {}
                                 datos_nuevos = {}
                                 cambios = []
@@ -426,7 +421,6 @@ else:
                                 if not cambios:
                                     st.warning("⚠️ No se detectaron cambios. Modifique algún campo antes de enviar.")
                                 else:
-                                    # Guardar propuesta
                                     if guardar_propuesta(
                                         sheet,
                                         st.session_state.user_info['dni'],
@@ -456,7 +450,6 @@ else:
             elif es_admin:
                 st.info("✏️ Modo Administrador - Puedes editar directamente")
                 
-                # Mostrar tabla editable para admin
                 edited_df = st.data_editor(
                     df_nomina,
                     use_container_width=True,
@@ -465,9 +458,8 @@ else:
                     key="editor_nomina_admin"
                 )
                 
-                # Detectar cambios y guardar
                 if not df_nomina.equals(edited_df):
-                    col_guardar, col_cancelar = st.columns([1, 4])
+                    col_guardar, _ = st.columns([1, 4])
                     with col_guardar:
                         if st.button("💾 GUARDAR CAMBIOS", type="primary", use_container_width=True):
                             try:
