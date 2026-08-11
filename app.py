@@ -1,3 +1,4 @@
+import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
@@ -105,7 +106,7 @@ if not st.session_state.logueado:
                 sheet = conectar_gsheet()
                 if sheet:
                     df_u = pd.DataFrame(sheet.worksheet("Usuarios").get_all_records())
-                    match = df_u[(df_u['Usuario'].astype(str) == u) & (df_u['Clave'].astype(str) == p)]
+                    match = df_u[(df_u['DNI'].astype(str) == u) & (df_u['CLAVE'].astype(str) == p)]
                     if not match.empty:
                         st.session_state.logueado = True
                         st.session_state.user_info = {'dni': u, 'nombre': match.iloc[0].get('NOMBRE', u)}
