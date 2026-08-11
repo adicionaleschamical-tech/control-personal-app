@@ -14,9 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ============================================================
-# 🚨 VERSIÓN DEL CÓDIGO - VERIFICACIÓN VISIBLE
-# ============================================================
+# --- VERSIÓN DEL CÓDIGO - VERIFICACIÓN VISIBLE ---
 st.markdown("""
     <div style="background: #ff6b6b; color: white; padding: 10px 20px; border-radius: 10px; margin-bottom: 20px; font-weight: bold; font-size: 1.2rem; text-align: center;">
         🚨 VERSIÓN NUEVA - TABLA EXCEL (25/11/2024) 
@@ -74,9 +72,19 @@ def leer_nomina(sheet):
 def leer_usuarios(sheet):
     try:
         ws_usuarios = sheet.worksheet("Usuarios")
-        data = ws_usuarios.get_all_records()
-        return pd.DataFrame(data)
-    except:
+        data = ws_usuarios.get_all_values()
+        if len(data) > 1:
+            # Usar la primera fila como encabezados
+            headers = [str(h).strip().upper() for h in data[0]]
+            # Limpiar datos
+            df = pd.DataFrame(data[1:], columns=headers)
+            # Limpiar valores
+            for col in df.columns:
+                df[col] = df[col].astype(str).str.strip()
+            return df
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Error al leer Usuarios: {e}")
         return pd.DataFrame()
 
 def guardar_propuesta(sheet, usuario_dni, usuario_nombre, dependencia, datos_originales, datos_nuevos):
@@ -268,32 +276,37 @@ if not st.session_state.logueado:
                 sheet = conectar_gsheet()
                 if sheet:
                     df_u = leer_usuarios(sheet)
-                    if 'DNI' in df_u.columns and 'CLAVE' in df_u.columns:
-                        match = df_u[(df_u['DNI'].astype(str) == u) & (df_u['CLAVE'].astype(str) == p)]
-                    else:
-                        st.error("Error: Columnas 'DNI' o 'CLAVE' no encontradas en Usuarios")
-                        st.stop()
                     
-                    if not match.empty:
-                        st.session_state.logueado = True
-                        user = match.iloc[0]
-                        st.session_state.user_info = {
-                            'dni': u, 
-                            'nombre': user.get('NOMBRE', u),
-                            'dependencia': user.get('DEPENDENCIA', ''),
-                            'jerarquia': user.get('JERARQUÍA', ''),
-                            'funcion': user.get('FUNCIÓN', '')
-                        }
-                        funcion = str(user.get('FUNCIÓN', '')).upper().strip()
-                        if 'ADMINISTRADOR' in funcion or 'ADMIN' in funcion:
-                            st.session_state.rol_usuario = 'ADMINISTRADOR'
-                        elif 'SUPERVISOR' in funcion or 'SUPER' in funcion:
-                            st.session_state.rol_usuario = 'SUPERVISOR'
+                    # Debug: mostrar nombres de columnas
+                    st.write("Columnas encontradas:", df_u.columns.tolist())
+                    st.write("Primeras filas:")
+                    st.dataframe(df_u.head(3))
+                    
+                    # Buscar usando nombres normalizados
+                    if 'DNI' in df_u.columns and 'CLAVE' in df_u.columns:
+                        match = df_u[(df_u['DNI'] == u) & (df_u['CLAVE'] == p)]
+                        if not match.empty:
+                            st.session_state.logueado = True
+                            user = match.iloc[0]
+                            st.session_state.user_info = {
+                                'dni': u, 
+                                'nombre': user.get('NOMBRE', u),
+                                'dependencia': user.get('DEPENDENCIA', ''),
+                                'jerarquia': user.get('JERARQUÍA', ''),
+                                'funcion': user.get('FUNCIÓN', '')
+                            }
+                            funcion = str(user.get('FUNCIÓN', '')).upper().strip()
+                            if 'ADMINISTRADOR' in funcion or 'ADMIN' in funcion:
+                                st.session_state.rol_usuario = 'ADMINISTRADOR'
+                            elif 'SUPERVISOR' in funcion or 'SUPER' in funcion:
+                                st.session_state.rol_usuario = 'SUPERVISOR'
+                            else:
+                                st.session_state.rol_usuario = 'COMUN'
+                            st.rerun()
                         else:
-                            st.session_state.rol_usuario = 'COMUN'
-                        st.rerun()
+                            st.error("DNI o Clave incorrectos")
                     else:
-                        st.error("Credenciales Inválidas")
+                        st.error(f"Columnas requeridas no encontradas. Columnas disponibles: {df_u.columns.tolist()}")
                 else:
                     st.error("Error de conexión a Google Sheets")
 else:
@@ -341,9 +354,7 @@ else:
                 del st.session_state[key]
             st.rerun()
     
-    # ============================================================
-    # TÍTULO PRINCIPAL
-    # ============================================================
+    # --- TÍTULO PRINCIPAL ---
     st.title("👮‍♂️ Sistema de Gestión - UR-V")
     
     if st.session_state.mensaje_exito:
