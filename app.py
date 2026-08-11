@@ -59,6 +59,24 @@ def leer_nomina(sheet):
     except:
         return pd.DataFrame()
 
+def leer_usuarios(sheet):
+    """Lee la hoja Usuarios - adaptado a la estructura real"""
+    try:
+        ws_usuarios = sheet.worksheet("Usuarios")
+        data = ws_usuarios.get_all_values()
+        if len(data) > 1:
+            # Limpiar headers
+            headers = [str(h).strip().upper() for h in data[0]]
+            df = pd.DataFrame(data[1:], columns=headers)
+            # Limpiar valores
+            for col in df.columns:
+                df[col] = df[col].astype(str).str.strip()
+            return df
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Error al leer Usuarios: {e}")
+        return pd.DataFrame()
+
 # --- FUNCIÓN DE CIERRE DE MES ---
 def cerrar_mes(sheet):
     try:
@@ -68,14 +86,10 @@ def cerrar_mes(sheet):
         if len(data) <= 1:
             return False, "No hay datos para archivar."
 
-        # Crear nombre para la nueva hoja (Historial)
         nombre_historico = f"Backup_{datetime.now().strftime('%m_%Y_%H%M')}"
-        
-        # 1. Crear la nueva hoja y copiar datos
         nueva_ws = sheet.add_worksheet(title=nombre_historico, rows=len(data), cols=len(data[0]))
         nueva_ws.update(data)
         
-        # 2. Limpiar la hoja "Registros" manteniendo encabezados
         headers = [data[0]]
         ws_registros.clear()
         ws_registros.update(headers, 'A1')
@@ -100,22 +114,41 @@ if not st.session_state.logueado:
     with col_log:
         st.title("🔐 Acceso Sistema")
         with st.form("login"):
-            u = st.text_input("DNI")
-            p = st.text_input("Clave", type="password")
+            u = st.text_input("USUARIO")
+            p = st.text_input("CLAVE", type="password")
             if st.form_submit_button("INGRESAR", use_container_width=True):
                 sheet = conectar_gsheet()
                 if sheet:
-                    df_u = pd.DataFrame(sheet.worksheet("Usuarios").get_all_records())
-                    match = df_u[(df_u['DNI'].astype(str) == u) & (df_u['CLAVE'].astype(str) == p)]
-                    if not match.empty:
-                        st.session_state.logueado = True
-                        st.session_state.user_info = {'dni': u, 'nombre': match.iloc[0].get('NOMBRE', u)}
-                        st.rerun()
+                    df_u = leer_usuarios(sheet)
+                    
+                    # Mostrar debug para verificar columnas
+                    st.write("🔍 Columnas encontradas:", df_u.columns.tolist())
+                    st.dataframe(df_u.head(3))
+                    
+                    # Buscar con nombres correctos
+                    if 'USUARIO' in df_u.columns and 'CLAVE' in df_u.columns:
+                        match = df_u[(df_u['USUARIO'] == u) & (df_u['CLAVE'] == p)]
+                        if not match.empty:
+                            st.session_state.logueado = True
+                            st.session_state.user_info = {
+                                'dni': u, 
+                                'nombre': u,
+                                'dependencia': match.iloc[0].get('DEPENDENCIA', ''),
+                                'rol': match.iloc[0].get('ROL', 'USUARIO')
+                            }
+                            st.rerun()
+                        else:
+                            st.error("USUARIO o CLAVE incorrectos")
                     else:
-                        st.error("Credenciales Inválidas")
+                        st.error(f"Columnas requeridas no encontradas. Columnas disponibles: {df_u.columns.tolist()}")
+                else:
+                    st.error("Error de conexión a Google Sheets")
 else:
     # --- APP PRINCIPAL ---
     sheet = conectar_gsheet()
+    if sheet is None:
+        st.stop()
+    
     df_nomina = leer_nomina(sheet)
     df_registros = leer_registros(sheet)
     
@@ -123,6 +156,7 @@ else:
     with st.sidebar:
         st.image("https://cdn-icons-png.flaticon.com/512/2092/2092663.png", width=70)
         st.write(f"**Operador:** {st.session_state.user_info['nombre']}")
+        st.write(f"**Rol:** {st.session_state.user_info.get('rol', 'USUARIO')}")
         
         st.divider()
         
@@ -147,7 +181,6 @@ else:
     
     st.title("👮‍♂️ Carga de Servicios - UR-V")
     
-    # Mensaje de éxito tras carga
     if st.session_state.mensaje_exito:
         st.success(st.session_state.mensaje_exito)
         st.session_state.mensaje_exito = None
