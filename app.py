@@ -11,8 +11,8 @@ import os
 # 🔍 VERIFICACIÓN DE VERSIÓN - 10/08/2026 23:30
 # ============================================================
 st.error(f"""
-🔴🔴🔴 VERSIÓN DESDE GITHUB 🔴🔴🔴
-Fecha: 10/08/2026 23:30
+🔴🔴🔴 VERSIÓN CORREGIDA - ADAPTADA A USUARIOS 🔴🔴🔴
+Fecha: 11/08/2026
 Hash: {os.environ.get('GITHUB_SHA', 'NO GITHUB - LOCAL')}
 Archivo: app.py
 """)
@@ -28,7 +28,7 @@ st.set_page_config(
 # --- VERSIÓN DEL CÓDIGO - VERIFICACIÓN VISIBLE ---
 st.markdown("""
     <div style="background: #ff6b6b; color: white; padding: 10px 20px; border-radius: 10px; margin-bottom: 20px; font-weight: bold; font-size: 1.2rem; text-align: center;">
-        🚨 VERSIÓN CORREGIDA (25/11/2024) 
+        🚨 VERSIÓN ADAPTADA - USUARIOS (11/08/2026) 
         <span style="background: white; color: #ff6b6b; padding: 2px 10px; border-radius: 5px; margin-left: 10px;">VERIFICACIÓN OK</span>
     </div>
 """, unsafe_allow_html=True)
@@ -81,25 +81,20 @@ def leer_nomina(sheet):
         return pd.DataFrame()
 
 def leer_usuarios(sheet):
-    """Lee la hoja Usuarios y detecta automáticamente los nombres de columnas"""
+    """Lee la hoja Usuarios - Adaptado a la estructura real"""
     try:
         ws_usuarios = sheet.worksheet("Usuarios")
         data = ws_usuarios.get_all_values()
         if len(data) > 1:
-            # Limpiar headers: eliminar espacios y convertir a mayúsculas
-            headers = []
-            for h in data[0]:
-                h_clean = str(h).strip().upper()
-                headers.append(h_clean)
-            
-            # Crear DataFrame
+            # Limpiar headers
+            headers = [str(h).strip().upper() for h in data[0]]
             df = pd.DataFrame(data[1:], columns=headers)
             
             # Limpiar valores
             for col in df.columns:
                 df[col] = df[col].astype(str).str.strip()
             
-            # DEBUG: mostrar qué columnas se encontraron
+            # DEBUG
             st.write("🔍 **DEBUG - Columnas encontradas en Usuarios:**", df.columns.tolist())
             st.write("🔍 **Primeras filas:**")
             st.dataframe(df.head(3))
@@ -293,36 +288,39 @@ if not st.session_state.logueado:
     with col_log:
         st.title("🔐 Acceso Sistema")
         with st.form("login"):
-            u = st.text_input("DNI")
-            p = st.text_input("Clave", type="password")
+            u = st.text_input("USUARIO")
+            p = st.text_input("CLAVE", type="password")
             if st.form_submit_button("INGRESAR", use_container_width=True):
                 sheet = conectar_gsheet()
                 if sheet:
                     df_u = leer_usuarios(sheet)
                     
-                    # Buscar usando nombres normalizados
-                    if 'DNI' in df_u.columns and 'CLAVE' in df_u.columns:
-                        match = df_u[(df_u['DNI'] == u) & (df_u['CLAVE'] == p)]
+                    # Buscar usando nombres normalizados (adaptado a tu hoja)
+                    if 'USUARIO' in df_u.columns and 'CLAVE' in df_u.columns:
+                        match = df_u[(df_u['USUARIO'] == u) & (df_u['CLAVE'] == p)]
                         if not match.empty:
                             st.session_state.logueado = True
                             user = match.iloc[0]
+                            
+                            # Determinar rol desde la columna ROL
+                            rol = str(user.get('ROL', 'COMUN')).upper().strip()
+                            
                             st.session_state.user_info = {
-                                'dni': u, 
-                                'nombre': user.get('NOMBRE', u),
+                                'dni': u,  # Usamos USUARIO como identificador
+                                'nombre': u,  # Usamos USUARIO como nombre
                                 'dependencia': user.get('DEPENDENCIA', ''),
-                                'jerarquia': user.get('JERARQUÍA', ''),
-                                'funcion': user.get('FUNCIÓN', '')
+                                'rol': rol
                             }
-                            funcion = str(user.get('FUNCIÓN', '')).upper().strip()
-                            if 'ADMINISTRADOR' in funcion or 'ADMIN' in funcion:
+                            
+                            if 'ADMINISTRADOR' in rol or 'ADMIN' in rol:
                                 st.session_state.rol_usuario = 'ADMINISTRADOR'
-                            elif 'SUPERVISOR' in funcion or 'SUPER' in funcion:
+                            elif 'SUPERVISOR' in rol or 'SUPER' in rol:
                                 st.session_state.rol_usuario = 'SUPERVISOR'
                             else:
                                 st.session_state.rol_usuario = 'COMUN'
                             st.rerun()
                         else:
-                            st.error("DNI o Clave incorrectos")
+                            st.error("USUARIO o CLAVE incorrectos")
                     else:
                         st.error(f"Columnas requeridas no encontradas. Columnas disponibles: {df_u.columns.tolist()}")
                 else:
