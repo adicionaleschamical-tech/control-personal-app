@@ -17,7 +17,7 @@ st.set_page_config(
 # --- VERSIÓN DEL CÓDIGO - VERIFICACIÓN VISIBLE ---
 st.markdown("""
     <div style="background: #ff6b6b; color: white; padding: 10px 20px; border-radius: 10px; margin-bottom: 20px; font-weight: bold; font-size: 1.2rem; text-align: center;">
-        🚨 VERSIÓN NUEVA - TABLA EXCEL (25/11/2024) 
+        🚨 VERSIÓN CORREGIDA (25/11/2024) 
         <span style="background: white; color: #ff6b6b; padding: 2px 10px; border-radius: 5px; margin-left: 10px;">VERIFICACIÓN OK</span>
     </div>
 """, unsafe_allow_html=True)
@@ -70,17 +70,29 @@ def leer_nomina(sheet):
         return pd.DataFrame()
 
 def leer_usuarios(sheet):
+    """Lee la hoja Usuarios y detecta automáticamente los nombres de columnas"""
     try:
         ws_usuarios = sheet.worksheet("Usuarios")
         data = ws_usuarios.get_all_values()
         if len(data) > 1:
-            # Usar la primera fila como encabezados
-            headers = [str(h).strip().upper() for h in data[0]]
-            # Limpiar datos
+            # Limpiar headers: eliminar espacios y convertir a mayúsculas
+            headers = []
+            for h in data[0]:
+                h_clean = str(h).strip().upper()
+                headers.append(h_clean)
+            
+            # Crear DataFrame
             df = pd.DataFrame(data[1:], columns=headers)
+            
             # Limpiar valores
             for col in df.columns:
                 df[col] = df[col].astype(str).str.strip()
+            
+            # DEBUG: mostrar qué columnas se encontraron
+            st.write("🔍 **DEBUG - Columnas encontradas en Usuarios:**", df.columns.tolist())
+            st.write("🔍 **Primeras filas:**")
+            st.dataframe(df.head(3))
+            
             return df
         return pd.DataFrame()
     except Exception as e:
@@ -276,11 +288,6 @@ if not st.session_state.logueado:
                 sheet = conectar_gsheet()
                 if sheet:
                     df_u = leer_usuarios(sheet)
-                    
-                    # Debug: mostrar nombres de columnas
-                    st.write("Columnas encontradas:", df_u.columns.tolist())
-                    st.write("Primeras filas:")
-                    st.dataframe(df_u.head(3))
                     
                     # Buscar usando nombres normalizados
                     if 'DNI' in df_u.columns and 'CLAVE' in df_u.columns:
