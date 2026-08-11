@@ -20,48 +20,6 @@ st.markdown("""
     .main { background-color: #0e1117; color: white; }
     div[data-testid="stMetricValue"] { color: #58a6ff; font-weight: bold; }
     .stButton>button { border-radius: 8px; font-weight: bold; }
-    .ficha-container {
-        background: white;
-        border-radius: 20px;
-        padding: 25px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        border: 1px solid #eef2f7;
-        margin: 15px 0;
-    }
-    .ficha-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-        gap: 12px;
-        margin-top: 15px;
-    }
-    .ficha-item {
-        background: #f8fafc;
-        padding: 10px 14px;
-        border-radius: 10px;
-        border: 1px solid #eef2f7;
-    }
-    .ficha-item-label {
-        font-size: 0.85rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: #000000;
-        margin-bottom: 2px;
-    }
-    .ficha-item-valor {
-        font-size: 0.95rem;
-        font-weight: 500;
-        color: #000000;
-    }
-    .ficha-item-valor.vacio {
-        color: #000000;
-        font-style: italic;
-    }
-    .ficha-item.ultimo-ascenso .ficha-item-valor {
-        font-size: 1.4rem !important;
-        font-weight: 700 !important;
-        color: #000000 !important;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -113,7 +71,13 @@ def leer_usuarios(sheet):
 
 def guardar_propuesta(sheet, usuario_dni, usuario_nombre, dependencia, datos_originales, datos_nuevos):
     try:
-        ws = sheet.worksheet("Propuestas")
+        # Verificar si existe la hoja Propuestas
+        try:
+            ws = sheet.worksheet("Propuestas")
+        except:
+            ws = sheet.add_worksheet(title="Propuestas", rows=1000, cols=20)
+            ws.update([['ID', 'FECHA', 'USUARIO_DNI', 'USUARIO_NOMBRE', 'DEPENDENCIA', 'ACCION', 'DATOS_ORIGINALES', 'DATOS_NUEVOS', 'ESTADO']])
+        
         propuestas_data = ws.get_all_values()
         if len(propuestas_data) > 1:
             header = propuestas_data[0]
@@ -125,7 +89,7 @@ def guardar_propuesta(sheet, usuario_dni, usuario_nombre, dependencia, datos_ori
         nuevo_id = len(df_prop) + 1 if not df_prop.empty else 1
         fecha_arg = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        nueva_fila = [nuevo_id, fecha_arg, usuario_dni, usuario_nombre, dependencia, 'MODIFICAR', 
+        nueva_fila = [str(nuevo_id), fecha_arg, usuario_dni, usuario_nombre, dependencia, 'MODIFICAR', 
                       json.dumps(datos_originales, ensure_ascii=False), 
                       json.dumps(datos_nuevos, ensure_ascii=False), 'PENDIENTE']
         
@@ -140,7 +104,7 @@ def aprobar_propuesta(sheet, id_propuesta, admin_dni, admin_nombre):
         ws = sheet.worksheet("Propuestas")
         propuestas_data = ws.get_all_values()
         if len(propuestas_data) <= 1:
-            return False
+            return False, "No hay propuestas"
         
         header = propuestas_data[0]
         prop_data = propuestas_data[1:]
@@ -159,24 +123,42 @@ def aprobar_propuesta(sheet, id_propuesta, admin_dni, admin_nombre):
         nomina_data = ws_nomina.get_all_values()
         header_nomina = nomina_data[0]
         
-        # Buscar el agente por DNI o APELLIDO Y NOMBRES
+        # Buscar por DNI o APELLIDO Y NOMBRES
         dni_modificar = datos_nuevos.get('DNI')
         nombre_modificar = datos_nuevos.get('APELLIDO Y NOMBRES')
         
         cambios_aplicados = []
-        if dni_modificar:
-            col_dni_idx = header_nomina.index('DNI') if 'DNI' in header_nomina else None
-            if col_dni_idx is not None:
-                for i, row in enumerate(nomina_data[1:], start=2):
-                    if len(row) > col_dni_idx and row[col_dni_idx] == str(dni_modificar):
-                        for col_idx, col_name in enumerate(header_nomina):
-                            if col_name in datos_nuevos:
-                                original = datos_originales.get(col_name, '')
-                                nuevo = datos_nuevos.get(col_name, '')
-                                if str(original) != str(nuevo):
-                                    ws_nomina.update_cell(i, col_idx+1, str(nuevo))
-                                    cambios_aplicados.append(f"{col_name}: {original} → {nuevo}")
-                        break
+        fila_encontrada = False
+        
+        # Si tenemos DNI, buscar por DNI
+        if dni_modificar and 'DNI' in header_nomina:
+            col_dni_idx = header_nomina.index('DNI')
+            for i, row in enumerate(nomina_data[1:], start=2):
+                if len(row) > col_dni_idx and row[col_dni_idx] == str(dni_modificar):
+                    for col_idx, col_name in enumerate(header_nomina):
+                        if col_name in datos_nuevos:
+                            original = datos_originales.get(col_name, '')
+                            nuevo = datos_nuevos.get(col_name, '')
+                            if str(original) != str(nuevo):
+                                ws_nomina.update_cell(i, col_idx+1, str(nuevo))
+                                cambios_aplicados.append(f"{col_name}: {original} → {nuevo}")
+                    fila_encontrada = True
+                    break
+        
+        # Si no encontramos por DNI o no hay DNI, buscar por nombre
+        if not fila_encontrada and nombre_modificar and 'APELLIDO Y NOMBRES' in header_nomina:
+            col_nombre_idx = header_nomina.index('APELLIDO Y NOMBRES')
+            for i, row in enumerate(nomina_data[1:], start=2):
+                if len(row) > col_nombre_idx and row[col_nombre_idx] == nombre_modificar:
+                    for col_idx, col_name in enumerate(header_nomina):
+                        if col_name in datos_nuevos:
+                            original = datos_originales.get(col_name, '')
+                            nuevo = datos_nuevos.get(col_name, '')
+                            if str(original) != str(nuevo):
+                                ws_nomina.update_cell(i, col_idx+1, str(nuevo))
+                                cambios_aplicados.append(f"{col_name}: {original} → {nuevo}")
+                    fila_encontrada = True
+                    break
         
         # Registrar en auditoría
         registrar_auditoria(sheet, admin_dni, admin_nombre, propuesta['DEPENDENCIA'], 
@@ -197,7 +179,7 @@ def rechazar_propuesta(sheet, id_propuesta):
         ws = sheet.worksheet("Propuestas")
         propuestas_data = ws.get_all_values()
         if len(propuestas_data) <= 1:
-            return False
+            return False, "No hay propuestas"
         
         header = propuestas_data[0]
         prop_data = propuestas_data[1:]
@@ -214,7 +196,12 @@ def rechazar_propuesta(sheet, id_propuesta):
 
 def registrar_auditoria(sheet, usuario_dni, usuario_nombre, dependencia, detalle):
     try:
-        ws = sheet.worksheet("Auditoria")
+        try:
+            ws = sheet.worksheet("Auditoria")
+        except:
+            ws = sheet.add_worksheet(title="Auditoria", rows=1000, cols=20)
+            ws.update([['ID', 'FECHA', 'USUARIO_DNI', 'USUARIO_NOMBRE', 'DEPENDENCIA', 'ACCION', 'DETALLE']])
+        
         auditoria_data = ws.get_all_values()
         if len(auditoria_data) > 1:
             header = auditoria_data[0]
@@ -226,7 +213,7 @@ def registrar_auditoria(sheet, usuario_dni, usuario_nombre, dependencia, detalle
         nuevo_id = len(df_aud) + 1 if not df_aud.empty else 1
         fecha_arg = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        nueva_fila = [nuevo_id, fecha_arg, usuario_dni, usuario_nombre, dependencia, 'PROPUESTA_CAMBIO', detalle]
+        nueva_fila = [str(nuevo_id), fecha_arg, usuario_dni, usuario_nombre, dependencia, 'PROPUESTA_CAMBIO', detalle]
         ws.append_row(nueva_fila)
         return True
     except Exception as e:
@@ -263,6 +250,8 @@ if 'confirmar_carga' not in st.session_state:
     st.session_state.confirmar_carga = None
 if 'rol_usuario' not in st.session_state:
     st.session_state.rol_usuario = 'COMUN'
+if 'fila_seleccionada' not in st.session_state:
+    st.session_state.fila_seleccionada = None
 
 # --- LOGIN ---
 if not st.session_state.logueado:
@@ -276,7 +265,12 @@ if not st.session_state.logueado:
                 sheet = conectar_gsheet()
                 if sheet:
                     df_u = leer_usuarios(sheet)
-                    match = df_u[(df_u['DNI'].astype(str) == u) & (df_u['CLAVE'].astype(str) == p)]
+                    if 'DNI' in df_u.columns and 'CLAVE' in df_u.columns:
+                        match = df_u[(df_u['DNI'].astype(str) == u) & (df_u['CLAVE'].astype(str) == p)]
+                    else:
+                        st.error("Error: Columnas 'DNI' o 'CLAVE' no encontradas en Usuarios")
+                        st.stop()
+                    
                     if not match.empty:
                         st.session_state.logueado = True
                         user = match.iloc[0]
@@ -287,17 +281,18 @@ if not st.session_state.logueado:
                             'jerarquia': user.get('JERARQUÍA', ''),
                             'funcion': user.get('FUNCIÓN', '')
                         }
-                        # Determinar rol: FUNCIÓN = ADMINISTRADOR, SUPERVISOR, o COMÚN
-                        funcion = str(user.get('FUNCIÓN', '')).upper()
-                        if 'ADMINISTRADOR' in funcion:
+                        funcion = str(user.get('FUNCIÓN', '')).upper().strip()
+                        if 'ADMINISTRADOR' in funcion or 'ADMIN' in funcion:
                             st.session_state.rol_usuario = 'ADMINISTRADOR'
-                        elif 'SUPERVISOR' in funcion:
+                        elif 'SUPERVISOR' in funcion or 'SUPER' in funcion:
                             st.session_state.rol_usuario = 'SUPERVISOR'
                         else:
                             st.session_state.rol_usuario = 'COMUN'
                         st.rerun()
                     else:
                         st.error("Credenciales Inválidas")
+                else:
+                    st.error("Error de conexión a Google Sheets")
 else:
     # --- APP PRINCIPAL ---
     sheet = conectar_gsheet()
@@ -306,7 +301,6 @@ else:
     
     df_nomina = leer_nomina(sheet)
     df_registros = leer_registros(sheet)
-    df_usuarios = leer_usuarios(sheet)
     
     # Determinar rol
     es_admin = st.session_state.rol_usuario == 'ADMINISTRADOR'
@@ -322,12 +316,10 @@ else:
         
         st.divider()
         
-        # --- NAVEGACIÓN ---
         opcion = st.radio("📌 Sección", ["📋 Nómina", "📝 Carga de Servicios", "📊 Propuestas Pendientes"])
         
         st.divider()
         
-        # Herramientas de Administrador
         if es_admin:
             st.subheader("⚙️ Administración")
             with st.expander("Finalizar Período"):
@@ -349,13 +341,12 @@ else:
     
     st.title("👮‍♂️ Sistema de Gestión - UR-V")
     
-    # Mensaje de éxito
     if st.session_state.mensaje_exito:
         st.success(st.session_state.mensaje_exito)
         st.session_state.mensaje_exito = None
     
     # ============================================================
-    # SECCIÓN 1: NÓMINA (TABLA TIPO EXCEL)
+    # SECCIÓN 1: NÓMINA
     # ============================================================
     if opcion == "📋 Nómina":
         st.header("📋 Nómina de Personal")
@@ -363,136 +354,77 @@ else:
         if df_nomina.empty:
             st.warning("No hay datos en la Nómina")
         else:
-            # --- FILTROS ---
-            col_f1, col_f2, col_f3 = st.columns(3)
-            with col_f1:
-                dependencias = ["Todas"] + sorted(df_nomina['DEPENDENCIA'].unique().tolist())
-                dep_filter = st.selectbox("🏢 Dependencia", dependencias)
-            with col_f2:
-                jerarquias = ["Todas"] + sorted(df_nomina['JERARQUÍA'].unique().tolist())
-                jer_filter = st.selectbox("⭐ Jerarquía", jerarquias)
-            with col_f3:
-                busqueda = st.text_input("🔍 Buscar", placeholder="Nombre o DNI...")
+            # --- MOSTRAR TODAS LAS COLUMNAS ---
+            st.info(f"📊 Total de registros: {len(df_nomina)}")
             
-            # --- APLICAR FILTROS ---
-            df_filtrado = df_nomina.copy()
-            if dep_filter != "Todas":
-                df_filtrado = df_filtrado[df_filtrado['DEPENDENCIA'] == dep_filter]
-            if jer_filter != "Todas":
-                df_filtrado = df_filtrado[df_filtrado['JERARQUÍA'] == jer_filter]
-            if busqueda:
-                mascara = df_filtrado.astype(str).apply(lambda row: row.str.contains(busqueda, case=False).any(), axis=1)
-                df_filtrado = df_filtrado[mascara]
+            # Mostrar la tabla completa (todas las columnas)
+            st.dataframe(
+                df_nomina,
+                use_container_width=True,
+                hide_index=True,
+                height=400
+            )
             
-            st.caption(f"📊 Mostrando {len(df_filtrado)} de {len(df_nomina)} registros")
+            st.divider()
             
-            # --- MOSTRAR TABLA ---
-            # Determinar si el usuario puede editar
-            puede_editar = es_admin
-            
-            if puede_editar:
-                st.info("✏️ Modo Edición: Los cambios se aplican directamente")
-                # Para administradores: edición directa
-                edited_df = st.data_editor(
-                    df_filtrado,
-                    use_container_width=True,
-                    hide_index=True,
-                    num_rows="dynamic",
-                    key="editor_nomina"
-                )
+            # --- SELECCIÓN DE FILA PARA EDITAR (SOLO USUARIOS COMUNES) ---
+            if es_comun:
+                st.subheader("✏️ Proponer Cambios")
+                st.caption("Selecciona un agente para modificar sus datos")
                 
-                # Detectar cambios y guardar
-                if not df_filtrado.equals(edited_df):
-                    if st.button("💾 GUARDAR CAMBIOS", type="primary"):
-                        try:
-                            ws_nomina = sheet.worksheet("Nómina")
-                            # Actualizar toda la hoja
-                            ws_nomina.clear()
-                            ws_nomina.update([edited_df.columns.tolist()] + edited_df.values.tolist())
-                            st.success("✅ Cambios guardados correctamente")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al guardar: {e}")
-            else:
-                # Para usuarios comunes y supervisores: solo lectura o propuesta
-                if es_comun:
-                    st.info("📝 Selecciona una fila para proponer cambios")
-                    st.caption("Los cambios serán enviados a aprobación del Administrador")
+                # Selector de agente
+                lista_nombres = sorted(df_nomina['APELLIDO Y NOMBRES'].tolist()) if 'APELLIDO Y NOMBRES' in df_nomina.columns else []
                 
-                # Mostrar tabla con selección
-                event = st.dataframe(
-                    df_filtrado,
-                    use_container_width=True,
-                    hide_index=True,
-                    selection_mode="single-row",
-                    on_select="rerun"
-                )
-                
-                # Verificar si se seleccionó una fila
-                if event and event.selection and "rows" in event.selection and len(event.selection["rows"]) > 0:
-                    row_idx = event.selection["rows"][0]
-                    if row_idx is not None:
-                        idx_original = df_filtrado.index[row_idx]
-                        agente = df_filtrado.loc[idx_original]
+                if lista_nombres:
+                    agente_seleccionado = st.selectbox("Seleccionar agente:", lista_nombres)
+                    
+                    if agente_seleccionado:
+                        # Obtener datos del agente
+                        agente_data = df_nomina[df_nomina['APELLIDO Y NOMBRES'] == agente_seleccionado].iloc[0]
                         
                         st.markdown("---")
-                        st.subheader("📝 Proponer Cambios")
+                        st.subheader(f"📝 Modificar datos de: {agente_seleccionado}")
                         
-                        # Mostrar ficha del agente con campos editables
-                        st.markdown(f"""
-                        <div class="ficha-container">
-                            <div class="ficha-grid">
-                        """, unsafe_allow_html=True)
-                        
-                        # Crear formulario de edición
-                        agente_dict = agente.to_dict()
-                        nuevos_valores = {}
-                        campos_header = ['APELLIDO Y NOMBRES', 'JERARQUÍA', 'FUNCIÓN', 'DEPENDENCIA']
-                        
-                        # Usar columnas para organizar los campos
-                        cols = st.columns(3)
-                        col_idx = 0
-                        
-                        for col, valor in agente_dict.items():
-                            # Saltar campos que no deben editarse
-                            if col in ['N°']:
-                                continue
+                        # Formulario de edición
+                        with st.form(key="form_propuesta"):
+                            st.markdown("**Complete los campos que desea modificar:**")
                             
-                            # Determinar si es ULTIMO ASCENSO para destacarlo
-                            es_ultimo_ascenso = col.upper() == "ULTIMO ASCENSO"
-                            label = col
+                            # Crear campos para todas las columnas
+                            nuevos_valores = {}
+                            columnas_a_mostrar = [col for col in df_nomina.columns if col not in ['N°', 'ID']]
                             
-                            # Crear campo editable
-                            with cols[col_idx % 3]:
-                                if col in campos_header:
-                                    # Estos campos ya se ven en la ficha, los mostramos como texto
-                                    st.markdown(f"**{label}:** {valor}")
-                                else:
-                                    if es_ultimo_ascenso:
-                                        nuevos_valores[col] = st.text_input(f"📌 {label}", value=str(valor), key=f"prop_{col}")
+                            # Organizar en columnas
+                            cols = st.columns(3)
+                            for idx, col in enumerate(columnas_a_mostrar):
+                                valor_actual = agente_data[col]
+                                with cols[idx % 3]:
+                                    label = col
+                                    # Si es ULTIMO ASCENSO, destacarlo
+                                    if col.upper() == "ULTIMO ASCENSO":
+                                        nuevos_valores[col] = st.text_input(f"📌 {label}", value=str(valor_actual), key=f"edit_{col}")
                                     else:
-                                        nuevos_valores[col] = st.text_input(label, value=str(valor), key=f"prop_{col}")
-                            col_idx += 1
-                        
-                        st.markdown("</div></div>", unsafe_allow_html=True)
-                        
-                        # Botón para enviar propuesta
-                        col_b1, col_b2 = st.columns([1, 3])
-                        with col_b1:
-                            if st.button("📤 ENVIAR PROPUESTA", type="primary", use_container_width=True):
-                                # Verificar qué campos cambiaron
+                                        nuevos_valores[col] = st.text_input(label, value=str(valor_actual), key=f"edit_{col}")
+                            
+                            st.divider()
+                            
+                            # Botón de envío
+                            submitted = st.form_submit_button("📤 ENVIAR PROPUESTA", type="primary", use_container_width=True)
+                            
+                            if submitted:
+                                # Detectar cambios
                                 datos_originales = {}
                                 datos_nuevos = {}
                                 cambios = []
+                                
                                 for col, nuevo_valor in nuevos_valores.items():
-                                    valor_original = str(agente_dict.get(col, ''))
+                                    valor_original = str(agente_data.get(col, ''))
                                     if valor_original != nuevo_valor:
                                         datos_originales[col] = valor_original
                                         datos_nuevos[col] = nuevo_valor
-                                        cambios.append(f"{col}: {valor_original} → {nuevo_valor}")
+                                        cambios.append(f"{col}: '{valor_original}' → '{nuevo_valor}'")
                                 
                                 if not cambios:
-                                    st.warning("No se detectaron cambios")
+                                    st.warning("⚠️ No se detectaron cambios. Modifique algún campo antes de enviar.")
                                 else:
                                     # Guardar propuesta
                                     if guardar_propuesta(
@@ -508,11 +440,45 @@ else:
                                             st.session_state.user_info['dni'],
                                             st.session_state.user_info['nombre'],
                                             st.session_state.user_info.get('dependencia', ''),
-                                            f"Propuesta de cambios para {agente_dict.get('APELLIDO Y NOMBRES', '')}: " + "; ".join(cambios)
+                                            f"Propuesta de cambios para {agente_seleccionado}: " + "; ".join(cambios)
                                         )
-                                        st.success(f"✅ Propuesta enviada. Cambios: {'; '.join(cambios)}")
+                                        st.success(f"✅ Propuesta enviada correctamente!")
+                                        st.info(f"**Cambios propuestos:**\n\n" + "\n".join([f"- {c}" for c in cambios]))
                                         st.balloons()
+                                        time.sleep(2)
                                         st.rerun()
+                else:
+                    st.warning("No se encontró la columna 'APELLIDO Y NOMBRES' en los datos")
+            
+            elif es_supervisor:
+                st.info("🔍 Modo Solo Lectura - No puedes realizar modificaciones")
+            
+            elif es_admin:
+                st.info("✏️ Modo Administrador - Puedes editar directamente")
+                
+                # Mostrar tabla editable para admin
+                edited_df = st.data_editor(
+                    df_nomina,
+                    use_container_width=True,
+                    hide_index=True,
+                    num_rows="dynamic",
+                    key="editor_nomina_admin"
+                )
+                
+                # Detectar cambios y guardar
+                if not df_nomina.equals(edited_df):
+                    col_guardar, col_cancelar = st.columns([1, 4])
+                    with col_guardar:
+                        if st.button("💾 GUARDAR CAMBIOS", type="primary", use_container_width=True):
+                            try:
+                                ws_nomina = sheet.worksheet("Nómina")
+                                ws_nomina.clear()
+                                ws_nomina.update([edited_df.columns.tolist()] + edited_df.values.tolist())
+                                st.success("✅ Cambios guardados correctamente")
+                                time.sleep(1)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error al guardar: {e}")
     
     # ============================================================
     # SECCIÓN 2: CARGA DE SERVICIOS
@@ -520,7 +486,6 @@ else:
     elif opcion == "📝 Carga de Servicios":
         st.header("📝 Carga de Servicios")
         
-        # --- MODAL DE CONFIRMACIÓN DE DUPLICADO ---
         if st.session_state.confirmar_carga:
             agente, fecha, fechas_previas = st.session_state.confirmar_carga
             st.warning(f"⚠️ **{agente} YA TIENE {len(fechas_previas)} REGISTRO(S)**")
@@ -541,7 +506,6 @@ else:
                     st.rerun()
             st.stop()
 
-        # Métricas
         c1, c2, c3 = st.columns(3)
         c1.metric("👥 TOTAL PERSONAL", len(df_nomina))
         c2.metric("📝 TOTAL CARGAS", len(df_registros))
@@ -549,7 +513,6 @@ else:
         
         st.divider()
         
-        # --- FORMULARIO ---
         col_form, col_list = st.columns([1, 1.3], gap="large")
         
         with col_form:
@@ -585,17 +548,21 @@ else:
                 st.info("No hay registros recientes.")
     
     # ============================================================
-    # SECCIÓN 3: PROPUESTAS PENDIENTES (SOLO ADMIN)
+    # SECCIÓN 3: PROPUESTAS PENDIENTES
     # ============================================================
     elif opcion == "📊 Propuestas Pendientes":
         st.header("📊 Propuestas de Cambio")
         
         if not es_admin:
             st.warning("⚠️ Solo los Administradores pueden ver y gestionar propuestas.")
-            st.info("Los usuarios comunes pueden proponer cambios desde la sección 'Nómina'.")
         else:
             try:
-                ws_prop = sheet.worksheet("Propuestas")
+                try:
+                    ws_prop = sheet.worksheet("Propuestas")
+                except:
+                    st.info("No hay propuestas pendientes")
+                    st.stop()
+                
                 prop_data = ws_prop.get_all_values()
                 if len(prop_data) <= 1:
                     st.info("No hay propuestas pendientes")
@@ -604,7 +571,6 @@ else:
                     data = prop_data[1:]
                     df_prop = pd.DataFrame(data, columns=header)
                     
-                    # Filtrar pendientes
                     df_pendientes = df_prop[df_prop['ESTADO'] == 'PENDIENTE']
                     
                     if df_pendientes.empty:
@@ -619,7 +585,6 @@ else:
                                 st.markdown(f"**Usuario:** {prop['USUARIO_NOMBRE']} (DNI: {prop['USUARIO_DNI']})")
                                 st.markdown(f"**Dependencia:** {prop['DEPENDENCIA']}")
                                 
-                                # Mostrar cambios propuestos
                                 try:
                                     datos_originales = json.loads(prop['DATOS_ORIGINALES'])
                                     datos_nuevos = json.loads(prop['DATOS_NUEVOS'])
